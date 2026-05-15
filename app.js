@@ -15,9 +15,19 @@ const storageRemove = (key) => {
     localStorage.removeItem(`${LEGACY_STORAGE_PREFIX}${key}`);
 };
 const getTosUrl = () => state.config?.tosUrl || 'https://gatita.tech/tos.html';
+const chatUrl = (chatId) => `#/chat/${chatId}`;
+const sharedUrl = (token) => `#/share/${token}`;
+const newChatUrl = () => '#/new';
+const formatBytes = (bytes = 0) => {
+    if (!bytes) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+    return `${(bytes / (1024 ** index)).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+};
 
 const els = {
     chatList: document.getElementById('chatList'),
+    chatSearchInput: document.getElementById('chatSearchInput'),
     messages: document.getElementById('messages'),
     emptyState: document.getElementById('emptyState'),
     messageScroll: document.getElementById('messageScroll'),
@@ -31,10 +41,12 @@ const els = {
     settingsButton: document.getElementById('settingsButton'),
     settingsMenu: document.getElementById('settingsMenu'),
     settingsSummary: document.getElementById('settingsSummary'),
+    sidebarToggleButton: document.getElementById('sidebarToggleButton'),
     modelSelect: document.getElementById('modelSelect'),
     personalitySelect: document.getElementById('personalitySelect'),
     thinkingToggle: document.getElementById('thinkingToggle'),
     researchToggle: document.getElementById('researchToggle'),
+    autoWebToggle: document.getElementById('autoWebToggle'),
     deepResearchToggle: document.getElementById('deepResearchToggle'),
     usageText: document.getElementById('usageText'),
     accountName: document.getElementById('accountName'),
@@ -46,6 +58,10 @@ const els = {
     accountMinuteLimit: document.getElementById('accountMinuteLimit'),
     accountDeepLimit: document.getElementById('accountDeepLimit'),
     accountSignOutButton: document.getElementById('accountSignOutButton'),
+    passwordForm: document.getElementById('passwordForm'),
+    currentPassword: document.getElementById('currentPassword'),
+    newPassword: document.getElementById('newPassword'),
+    passwordError: document.getElementById('passwordError'),
     authModal: document.getElementById('authModal'),
     closeAuthButton: document.getElementById('closeAuthButton'),
     authForm: document.getElementById('authForm'),
@@ -64,6 +80,9 @@ const state = {
     chats: [],
     messages: [],
     activeChatId: null,
+    activeSharedToken: '',
+    chatSearch: '',
+    editingMessageId: null,
     authToken: storageGet('token'),
     guestId: storageGet('guest_id'),
     user: null,
@@ -255,6 +274,7 @@ const renderSelects = () => {
     const savedPersonality = storageGet('personality') || 'smart';
     const savedThinking = storageGet('thinking') === '1';
     const savedResearch = storageGet('research') === '1';
+    const savedAutoWeb = storageGet('auto_web') === '1';
     const savedDeepResearch = storageGet('deep_research') === '1';
 
     els.modelSelect.innerHTML = models.map((model) => (
@@ -268,6 +288,7 @@ const renderSelects = () => {
     els.personalitySelect.value = personalities.some((item) => item.id === savedPersonality) ? savedPersonality : 'smart';
     els.thinkingToggle.checked = savedThinking;
     els.researchToggle.checked = savedResearch && Boolean(state.user);
+    els.autoWebToggle.checked = savedAutoWeb;
     els.deepResearchToggle.checked = savedDeepResearch && Boolean(state.user);
     updateSettingsSummary();
 };
@@ -278,26 +299,58 @@ const updateSettingsSummary = () => {
     const personalityName = els.personalitySelect.selectedOptions?.[0]?.textContent || 'Personality';
     const extras = [
         els.thinkingToggle.checked ? 'Thinking' : '',
+        els.autoWebToggle.checked ? 'Auto web' : '',
         els.deepResearchToggle.checked ? 'Deep research' : (els.researchToggle.checked ? 'Research' : '')
     ].filter(Boolean);
     els.settingsSummary.textContent = [modelName, personalityName, ...extras].join(' · ');
 };
 
 const renderChats = () => {
-    if (!state.chats.length) {
-        els.chatList.innerHTML = '<button class="chat-item active" type="button"><span><span class="chat-title">New chat</span><span class="chat-preview">Ready</span></span><span class="chat-count">0</span></button>';
-        return;
+    const groups = new Map();
+    for (const chat of state.chats) {
+        const key = chat.pinned ? 'Pinned' : (chat.folder || 'Chats');
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(chat);
     }
 
-    els.chatList.innerHTML = state.chats.map((chat) => `
-        <button class="chat-item ${chat.id === state.activeChatId ? 'active' : ''}" type="button" data-chat-id="${chat.id}">
-            <span>
-                <span class="chat-title">${escapeHtml(chat.title || 'New chat')}</span>
-                <span class="chat-preview">${escapeHtml(chat.lastMessage || 'Ready')}</span>
-            </span>
-            <span class="chat-count">${chat.messageCount || 0}</span>
-        </button>
+    const newItem = `
+        <article class="chat-row ${!state.activeChatId && !state.activeSharedToken ? 'active' : ''}">
+            <button class="chat-item-main" type="button" data-new-chat="1">
+                <span>
+                    <span class="chat-title">New chat</span>
+                    <span class="chat-preview">Ready</span>
+                </span>
+                <span class="chat-count">0</span>
+            </button>
+        </article>
+    `;
+
+    const groupHtml = [...groups.entries()].map(([name, chats]) => `
+        <section class="chat-group">
+            <h3>${escapeHtml(name)}</h3>
+            ${chats.map((chat) => `
+                <article class="chat-row ${chat.id === state.activeChatId ? 'active' : ''}" data-chat-row="${chat.id}">
+                    <button class="chat-item-main" type="button" data-chat-id="${chat.id}">
+                        <span>
+                            <span class="chat-title">${chat.pinned ? 'Pinned ' : ''}${escapeHtml(chat.title || 'New chat')}</span>
+                            <span class="chat-preview">${escapeHtml(chat.lastMessage || 'Ready')}</span>
+                        </span>
+                        <span class="chat-count">${chat.messageCount || 0}</span>
+                    </button>
+                    <div class="chat-actions">
+                        <button type="button" data-pin-chat="${chat.id}" aria-label="${chat.pinned ? 'Unpin' : 'Pin'} chat" title="${chat.pinned ? 'Unpin' : 'Pin'}"><i data-lucide="pin"></i></button>
+                        <button type="button" data-rename-chat="${chat.id}" aria-label="Rename chat" title="Rename"><i data-lucide="pencil"></i></button>
+                        <button type="button" data-folder-chat="${chat.id}" aria-label="Set folder" title="Folder"><i data-lucide="folder"></i></button>
+                        <button type="button" data-share-chat="${chat.id}" aria-label="Share chat" title="Share"><i data-lucide="link"></i></button>
+                        <button type="button" data-delete-chat="${chat.id}" aria-label="Delete chat" title="Delete"><i data-lucide="trash-2"></i></button>
+                    </div>
+                </article>
+            `).join('')}
+        </section>
     `).join('');
+
+    els.chatList.innerHTML = `${newItem}${groupHtml || '<p class="empty-list">No saved chats found.</p>'}`;
+    iconRefresh();
 };
 
 const escapeHtml = (value) => String(value || '')
@@ -411,7 +464,7 @@ const renderMarkdown = (value) => {
         if (codeToken) {
             closeLooseBlocks();
             const block = codeBlocks[Number(codeToken[1])];
-            out.push(`<pre><code${block?.lang ? ` class="language-${block.lang}"` : ''}>${block?.code || ''}</code></pre>`);
+            out.push(`<pre><button class="copy-code-btn" type="button" data-copy-code title="Copy code" aria-label="Copy code"><i data-lucide="copy"></i></button><code${block?.lang ? ` class="language-${block.lang}"` : ''}>${block?.code || ''}</code></pre>`);
             continue;
         }
 
@@ -591,23 +644,39 @@ const renderMessages = () => {
         const streaming = message.streaming ? '<span class="stream-cursor" aria-hidden="true"></span>' : '';
         const sources = message.role === 'assistant' ? renderSources(message.sources) : '';
         const activity = message.role === 'assistant' ? renderActivityPanel(message.activity) : '';
+        const actions = message.id && !state.activeSharedToken ? `
+            <div class="message-actions">
+                ${message.role === 'assistant' ? `
+                    <button type="button" data-copy-message="${message.id}" title="Copy" aria-label="Copy response"><i data-lucide="copy"></i></button>
+                    <button type="button" data-regenerate-message="${message.id}" title="Regenerate" aria-label="Regenerate response"><i data-lucide="refresh-cw"></i></button>
+                ` : `
+                    <button type="button" data-edit-message="${message.id}" title="Edit and resend" aria-label="Edit and resend"><i data-lucide="pencil"></i></button>
+                `}
+                <button type="button" data-delete-message="${message.id}" title="Delete" aria-label="Delete message"><i data-lucide="trash-2"></i></button>
+            </div>
+        ` : '';
 
         return `
-            <article class="message ${message.role === 'user' ? 'user' : 'assistant'}${message.streaming ? ' streaming' : ''}">
-                <div class="message-stack">${activity}<div class="bubble">${body}${streaming}${chips}${sources}</div></div>
+            <article class="message ${message.role === 'user' ? 'user' : 'assistant'}${message.streaming ? ' streaming' : ''}" data-message-id="${message.id || ''}">
+                <div class="message-stack">${activity}<div class="bubble">${body}${streaming}${chips}${sources}</div>${actions}</div>
             </article>
         `;
     }).join('');
     requestAnimationFrame(() => {
         els.messageScroll.scrollTop = els.messageScroll.scrollHeight;
         if (!state.busy) queueMathTypeset();
+        iconRefresh();
     });
 };
 
 const renderAttachments = () => {
+    const maxFileBytes = state.config?.limits?.maxFileBytes || 8 * 1024 * 1024;
     els.attachmentRow.innerHTML = state.pendingFiles.map((file, index) => `
-        <span class="file-chip">
-            ${escapeHtml(file.name)}
+        <span class="file-chip ${file.size > maxFileBytes || !file.type ? 'warning' : ''}" title="${escapeHtml(file.type || 'application/octet-stream')}">
+            <span>
+                <strong>${escapeHtml(file.name)}</strong>
+                <small>${escapeHtml(file.type || 'unknown')} · ${formatBytes(file.size)}</small>
+            </span>
             <button type="button" data-remove-file="${index}" aria-label="Remove ${escapeHtml(file.name)}">×</button>
         </span>
     `).join('');
@@ -727,23 +796,25 @@ const fetchMe = async () => {
 };
 
 const fetchChats = async () => {
-    const data = await apiFetch('/chats');
+    const query = state.chatSearch ? `?q=${encodeURIComponent(state.chatSearch)}` : '';
+    const data = await apiFetch(`/chats${query}`);
     state.chats = data.chats || [];
-    if (!state.activeChatId && state.chats.length) {
-        state.activeChatId = state.chats[0].id;
-        await loadMessages(state.activeChatId);
-    } else {
-        renderChats();
-    }
+    renderChats();
 };
 
 const createChat = async () => {
     const data = await apiFetch('/chats', {
         method: 'POST',
-        body: JSON.stringify({ title: 'New chat' })
+        body: JSON.stringify({
+            title: 'New chat',
+            modelId: els.modelSelect.value,
+            personality: els.personalitySelect.value
+        })
     });
     state.activeChatId = data.chat.id;
+    state.activeSharedToken = '';
     state.messages = [];
+    window.location.hash = chatUrl(data.chat.id);
     await fetchChats();
     renderMessages();
 };
@@ -757,14 +828,116 @@ const ensureChat = async () => {
 const loadMessages = async (chatId) => {
     const data = await apiFetch(`/chats/${chatId}/messages`);
     state.activeChatId = Number(chatId);
+    state.activeSharedToken = '';
+    state.messages = data.messages || [];
+    if (data.chat?.model && state.config?.models?.some((model) => model.id === data.chat.model)) {
+        els.modelSelect.value = data.chat.model;
+    }
+    if (data.chat?.personality && state.config?.personalities?.some((item) => item.id === data.chat.personality)) {
+        els.personalitySelect.value = data.chat.personality;
+    }
+    updateSettingsSummary();
+    renderChats();
+    renderMessages();
+};
+
+const loadSharedChat = async (token) => {
+    const data = await apiFetch(`/shared/${encodeURIComponent(token)}`);
+    state.activeChatId = null;
+    state.activeSharedToken = token;
     state.messages = data.messages || [];
     renderChats();
     renderMessages();
 };
 
-const sendMessage = async () => {
-    const text = els.messageInput.value.trim();
-    if (!text && state.pendingFiles.length === 0) return;
+const startNewChat = () => {
+    state.activeChatId = null;
+    state.activeSharedToken = '';
+    state.messages = [];
+    window.location.hash = newChatUrl();
+    renderChats();
+    renderMessages();
+};
+
+const routeFromHash = async () => {
+    const hash = window.location.hash || newChatUrl();
+    const chatMatch = hash.match(/^#\/chat\/(\d+)$/);
+    const shareMatch = hash.match(/^#\/share\/([a-zA-Z0-9_-]+)$/);
+    if (chatMatch) {
+        await loadMessages(Number(chatMatch[1]));
+        return;
+    }
+    if (shareMatch) {
+        await loadSharedChat(shareMatch[1]);
+        return;
+    }
+    startNewChat();
+};
+
+const updateChat = async (chatId, patch) => {
+    const data = await apiFetch(`/chats/${chatId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch)
+    });
+    state.chats = state.chats.map((chat) => chat.id === Number(chatId) ? data.chat : chat);
+    renderChats();
+    return data.chat;
+};
+
+const deleteChat = async (chatId) => {
+    await apiFetch(`/chats/${chatId}`, { method: 'DELETE', body: JSON.stringify({}) });
+    if (state.activeChatId === Number(chatId)) startNewChat();
+    await fetchChats();
+};
+
+const shareChat = async (chatId) => {
+    const data = await apiFetch(`/chats/${chatId}/share`, {
+        method: 'POST',
+        body: JSON.stringify({ enabled: true })
+    });
+    const url = data.shareUrl || `${window.location.origin}${window.location.pathname}${sharedUrl(data.shareToken)}`;
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(url).catch(() => {});
+    showToast('Share link copied.');
+    await fetchChats();
+};
+
+const copyText = async (text) => {
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text || '').catch(() => {});
+    showToast('Copied.');
+};
+
+const deleteMessage = async (messageId) => {
+    if (!state.activeChatId) return;
+    await apiFetch(`/chats/${state.activeChatId}/messages/${messageId}`, {
+        method: 'DELETE',
+        body: JSON.stringify({})
+    });
+    state.messages = state.messages.filter((message) => message.id !== Number(messageId));
+    await fetchChats();
+    renderMessages();
+};
+
+const editAndResend = async (messageId) => {
+    const message = state.messages.find((item) => item.id === Number(messageId));
+    if (!message || message.role !== 'user') return;
+    const next = prompt('Edit message and resend:', message.content || '');
+    if (next === null) return;
+    const text = next.trim();
+    if (!text) return;
+    await sendMessage({ text, resendMessageId: Number(messageId) });
+};
+
+const regenerateMessage = async (messageId) => {
+    const message = state.messages.find((item) => item.id === Number(messageId));
+    if (!message || message.role !== 'assistant') return;
+    await sendMessage({ text: '', regenerateMessageId: Number(messageId) });
+};
+
+const sendMessage = async (options = {}) => {
+    const text = (options.text ?? els.messageInput.value).trim();
+    const isRegenerate = Boolean(options.regenerateMessageId);
+    const isResend = Boolean(options.resendMessageId);
+    if (!text && state.pendingFiles.length === 0 && !isRegenerate) return;
     if (state.config?.turnstileRequired && !state.turnstileToken) {
         showToast('Complete verification first.');
         return;
@@ -781,21 +954,38 @@ const sendMessage = async () => {
 
     state.busy = true;
     els.sendButton.disabled = true;
+    sendMessage.userDraft = null;
 
     try {
-        const chatId = await ensureChat();
-        const attachments = await Promise.all(state.pendingFiles.map(readFilePayload));
-        const publicAttachments = state.pendingFiles.map((file) => ({
+        const chatId = state.activeChatId || await ensureChat();
+        const filesToSend = (isRegenerate || isResend) ? [] : state.pendingFiles;
+        const attachments = await Promise.all(filesToSend.map(readFilePayload));
+        const publicAttachments = filesToSend.map((file) => ({
             name: file.name,
             contentType: file.type || 'application/octet-stream',
             size: file.size
         }));
 
-        state.messages.push({
-            role: 'user',
-            content: text || '[File upload]',
-            attachments: publicAttachments
-        });
+        if (isResend) {
+            const edited = state.messages.find((item) => item.id === options.resendMessageId);
+            state.messages = state.messages.filter((message) => {
+                if (message.id === options.resendMessageId) {
+                    message.content = text;
+                    return true;
+                }
+                return !edited?.createdAt || !message.createdAt || message.createdAt <= edited.createdAt;
+            });
+        } else if (isRegenerate) {
+            state.messages = state.messages.filter((message) => message.id !== options.regenerateMessageId);
+        } else {
+            const userDraft = {
+                role: 'user',
+                content: text || '[File upload]',
+                attachments: publicAttachments
+            };
+            state.messages.push(userDraft);
+            sendMessage.userDraft = userDraft;
+        }
         const assistantDraft = {
             role: 'assistant',
             content: '',
@@ -814,7 +1004,7 @@ const sendMessage = async () => {
 
         els.messageInput.value = '';
         autoGrowInput();
-        state.pendingFiles = [];
+        if (!isRegenerate && !isResend) state.pendingFiles = [];
         renderAttachments();
 
         const payload = {
@@ -824,7 +1014,10 @@ const sendMessage = async () => {
             personality: els.personalitySelect.value,
             thinking: els.thinkingToggle.checked,
             research: els.researchToggle.checked || els.deepResearchToggle.checked,
+            autoWeb: els.autoWebToggle.checked,
             deepResearch: els.deepResearchToggle.checked,
+            regenerateMessageId: options.regenerateMessageId || undefined,
+            resendMessageId: options.resendMessageId || undefined,
             displayName: state.user?.displayName || state.user?.email || 'Guest',
             stream: true,
             turnstileToken: state.turnstileToken
@@ -905,6 +1098,10 @@ const sendMessage = async () => {
         } else if (donePayload?.policyViolation) {
             state.messages = state.messages.filter((message) => message !== assistantDraft);
         } else if (donePayload?.message) {
+            if (donePayload.userMessageId && sendMessage.userDraft) {
+                sendMessage.userDraft.id = donePayload.userMessageId;
+                sendMessage.userDraft.createdAt = Date.now();
+            }
             Object.assign(assistantDraft, donePayload.message, {
                 loading: false,
                 streaming: false
@@ -917,6 +1114,7 @@ const sendMessage = async () => {
         updateUsage(donePayload?.usage);
         resetTurnstile('message');
         await fetchChats();
+        if (state.activeChatId) window.location.hash = chatUrl(state.activeChatId);
         renderMessages();
     } catch (error) {
         state.messages = state.messages.filter((message) => !message.loading && !message.streaming);
@@ -949,6 +1147,10 @@ const openAccountModal = () => {
 
 const closeAccountModal = () => {
     els.accountModal.classList.add('hidden');
+};
+
+const toggleSidebar = () => {
+    document.body.classList.toggle('sidebar-collapsed');
 };
 
 const setAuthMode = (mode) => {
@@ -990,6 +1192,7 @@ const submitAuth = async () => {
         closeAuthModal();
         state.activeChatId = null;
         state.messages = [];
+        window.location.hash = newChatUrl();
         await fetchMe();
         await fetchChats();
         renderMessages();
@@ -1008,6 +1211,7 @@ const signOut = async () => {
     storageRemove('token');
     updateAccount();
     closeAccountModal();
+    window.location.hash = newChatUrl();
     await fetchMe();
     await fetchChats();
     renderMessages();
@@ -1023,6 +1227,39 @@ els.messageInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
         sendMessage();
+    }
+});
+
+els.messages.addEventListener('click', (event) => {
+    const codeButton = event.target.closest('[data-copy-code]');
+    if (codeButton) {
+        const code = codeButton.closest('pre')?.querySelector('code')?.textContent || '';
+        copyText(code);
+        return;
+    }
+
+    const copyButton = event.target.closest('[data-copy-message]');
+    if (copyButton) {
+        const message = state.messages.find((item) => item.id === Number(copyButton.dataset.copyMessage));
+        copyText(message?.content || '');
+        return;
+    }
+
+    const regenerateButton = event.target.closest('[data-regenerate-message]');
+    if (regenerateButton) {
+        regenerateMessage(regenerateButton.dataset.regenerateMessage).catch((error) => showToast(error.message));
+        return;
+    }
+
+    const editButton = event.target.closest('[data-edit-message]');
+    if (editButton) {
+        editAndResend(editButton.dataset.editMessage).catch((error) => showToast(error.message));
+        return;
+    }
+
+    const deleteButton = event.target.closest('[data-delete-message]');
+    if (deleteButton && confirm('Delete this message?')) {
+        deleteMessage(deleteButton.dataset.deleteMessage).catch((error) => showToast(error.message));
     }
 });
 
@@ -1047,6 +1284,14 @@ els.fileInput.addEventListener('change', () => {
     renderAttachments();
 });
 
+els.chatSearchInput.addEventListener('input', () => {
+    state.chatSearch = els.chatSearchInput.value.trim();
+    clearTimeout(els.chatSearchInput.searchTimer);
+    els.chatSearchInput.searchTimer = setTimeout(() => {
+        fetchChats().catch((error) => showToast(error.message));
+    }, 180);
+});
+
 els.attachmentRow.addEventListener('click', (event) => {
     const index = event.target?.dataset?.removeFile;
     if (index === undefined) return;
@@ -1055,20 +1300,51 @@ els.attachmentRow.addEventListener('click', (event) => {
 });
 
 els.chatList.addEventListener('click', (event) => {
+    const newButton = event.target.closest('[data-new-chat]');
+    if (newButton) {
+        startNewChat();
+        return;
+    }
+    const action = event.target.closest('.chat-actions button');
+    if (action) {
+        const chatId = Number(action.dataset.pinChat
+            || action.dataset.renameChat
+            || action.dataset.folderChat
+            || action.dataset.shareChat
+            || action.dataset.deleteChat);
+        const chat = state.chats.find((item) => item.id === chatId);
+        if (!chat) return;
+        if (action.dataset.pinChat) {
+            updateChat(chatId, { pinned: !chat.pinned }).catch((error) => showToast(error.message));
+        } else if (action.dataset.renameChat) {
+            const title = prompt('Rename chat:', chat.title || 'New chat');
+            if (title !== null) updateChat(chatId, { title }).catch((error) => showToast(error.message));
+        } else if (action.dataset.folderChat) {
+            const folder = prompt('Folder name:', chat.folder || '');
+            if (folder !== null) updateChat(chatId, { folder }).catch((error) => showToast(error.message));
+        } else if (action.dataset.shareChat) {
+            shareChat(chatId).catch((error) => showToast(error.message));
+        } else if (action.dataset.deleteChat && confirm('Delete this chat?')) {
+            deleteChat(chatId).catch((error) => showToast(error.message));
+        }
+        return;
+    }
     const button = event.target.closest('[data-chat-id]');
     if (!button) return;
-    loadMessages(button.dataset.chatId).catch((error) => showToast(error.message));
+    window.location.hash = chatUrl(button.dataset.chatId);
 });
 
-els.newChatButton.addEventListener('click', () => createChat().catch((error) => showToast(error.message)));
+els.newChatButton.addEventListener('click', startNewChat);
 
 els.modelSelect.addEventListener('change', () => {
     storageSet('model', els.modelSelect.value);
+    if (state.activeChatId) updateChat(state.activeChatId, { modelId: els.modelSelect.value }).catch(() => {});
     updateSettingsSummary();
 });
 
 els.personalitySelect.addEventListener('change', () => {
     storageSet('personality', els.personalitySelect.value);
+    if (state.activeChatId) updateChat(state.activeChatId, { personality: els.personalitySelect.value }).catch(() => {});
     updateSettingsSummary();
 });
 
@@ -1089,6 +1365,11 @@ els.researchToggle.addEventListener('change', () => {
         storageSet('deep_research', '0');
     }
     storageSet('research', els.researchToggle.checked ? '1' : '0');
+    updateSettingsSummary();
+});
+
+els.autoWebToggle.addEventListener('change', () => {
+    storageSet('auto_web', els.autoWebToggle.checked ? '1' : '0');
     updateSettingsSummary();
 });
 
@@ -1113,6 +1394,8 @@ els.settingsButton.addEventListener('click', () => {
     els.settingsButton.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
 });
 
+els.sidebarToggleButton.addEventListener('click', toggleSidebar);
+
 document.addEventListener('click', (event) => {
     const target = event.target;
     if (!els.settingsMenu || els.settingsMenu.classList.contains('hidden')) return;
@@ -1122,6 +1405,22 @@ document.addEventListener('click', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
+    const isModifier = event.metaKey || event.ctrlKey;
+    if (isModifier && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        els.messageInput.focus();
+        return;
+    }
+    if (isModifier && event.key.toLowerCase() === 'n') {
+        event.preventDefault();
+        startNewChat();
+        return;
+    }
+    if (isModifier && event.key.toLowerCase() === 'b') {
+        event.preventDefault();
+        toggleSidebar();
+        return;
+    }
     if (event.key !== 'Escape') return;
     if (!els.settingsMenu.classList.contains('hidden')) {
         els.settingsMenu.classList.add('hidden');
@@ -1151,6 +1450,25 @@ els.accountSignOutButton.addEventListener('click', () => {
     signOut().catch((error) => showToast(error.message));
 });
 
+els.passwordForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    els.passwordError.textContent = '';
+    try {
+        await apiFetch('/auth/password', {
+            method: 'POST',
+            body: JSON.stringify({
+                currentPassword: els.currentPassword.value,
+                newPassword: els.newPassword.value
+            })
+        });
+        els.currentPassword.value = '';
+        els.newPassword.value = '';
+        showToast('Password changed.');
+    } catch (error) {
+        els.passwordError.textContent = error.message || 'Could not change password.';
+    }
+});
+
 document.querySelectorAll('.auth-tab').forEach((button) => {
     button.addEventListener('click', () => setAuthMode(button.dataset.authMode));
 });
@@ -1161,6 +1479,12 @@ els.authForm.addEventListener('submit', (event) => {
 });
 
 window.addEventListener('load', iconRefresh);
+window.addEventListener('hashchange', () => {
+    routeFromHash().catch((error) => {
+        showToast(error.message || 'Chat could not load.');
+        startNewChat();
+    });
+});
 
 (async () => {
     try {
@@ -1168,8 +1492,7 @@ window.addEventListener('load', iconRefresh);
         await fetchConfig();
         await fetchMe();
         await fetchChats();
-        renderChats();
-        renderMessages();
+        await routeFromHash();
     } catch (error) {
         showToast(error.message || 'Ask could not load.');
         renderChats();

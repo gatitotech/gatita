@@ -36,12 +36,20 @@
                 <button class="small-btn" id="accountButton" type="button">Account</button>
             </div>
 
+            <div class="chat-search-wrap">
+                <i data-lucide="search"></i>
+                <input id="chatSearchInput" type="search" placeholder="Search chats">
+            </div>
+
             <nav class="chat-list" id="chatList" aria-label="Saved chats"></nav>
         </aside>
 
         <section class="chat-main" aria-label="Gatita Ask chat">
             <header class="chat-topbar">
                 <div class="topbar-inner">
+                    <button class="icon-btn sidebar-toggle" id="sidebarToggleButton" type="button" aria-label="Toggle chats" title="Toggle chats">
+                        <i data-lucide="panel-left"></i>
+                    </button>
                     <div class="mode-summary">
                         <span class="mode-label">Current setup</span>
                         <span id="settingsSummary">Loading...</span>
@@ -69,6 +77,11 @@
                                 <input id="researchToggle" type="checkbox">
                                 <span class="toggle-track"></span>
                                 <span>Research</span>
+                            </label>
+                            <label class="thinking-toggle">
+                                <input id="autoWebToggle" type="checkbox">
+                                <span class="toggle-track"></span>
+                                <span>Auto web check</span>
                             </label>
                             <label class="thinking-toggle research-control" title="Deep research is available for signed-in accounts">
                                 <input id="deepResearchToggle" type="checkbox">
@@ -175,6 +188,19 @@
                 <div class="account-actions">
                     <button class="small-btn" id="accountSignOutButton" type="button">Sign out</button>
                 </div>
+
+                <form class="password-form" id="passwordForm">
+                    <label>
+                        <span>Current password</span>
+                        <input id="currentPassword" type="password" autocomplete="current-password">
+                    </label>
+                    <label>
+                        <span>New password</span>
+                        <input id="newPassword" type="password" autocomplete="new-password" minlength="8">
+                    </label>
+                    <p class="form-error" id="passwordError" role="alert"></p>
+                    <button class="auth-submit" type="submit">Change password</button>
+                </form>
             </div>
         </section>
     </div>
