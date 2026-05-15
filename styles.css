@@ -91,6 +91,11 @@ body.sidebar-collapsed .chat-sidebar {
     border-right: 0;
 }
 
+body.consent-locked .ask-app {
+    pointer-events: none;
+    opacity: 0.42;
+}
+
 .chat-sidebar {
     display: flex;
     min-width: 0;
@@ -1209,6 +1214,91 @@ body.sidebar-collapsed .chat-sidebar {
     width: min(520px, 100%);
 }
 
+.consent-backdrop {
+    z-index: 45;
+}
+
+.consent-modal {
+    width: min(560px, 100%);
+}
+
+.consent-body {
+    display: grid;
+    gap: 14px;
+    padding: 16px;
+}
+
+.consent-body p,
+.consent-note span,
+.consent-check span {
+    margin: 0;
+    color: var(--text-soft);
+    line-height: 1.55;
+}
+
+.consent-note {
+    display: grid;
+    gap: 6px;
+    padding: 12px;
+    border: 1px solid rgba(229, 177, 109, 0.26);
+    border-radius: var(--radius);
+    background: rgba(229, 177, 109, 0.08);
+}
+
+.consent-note strong {
+    color: var(--text);
+}
+
+.consent-check {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: rgba(255, 255, 255, 0.045);
+}
+
+.consent-check input {
+    margin-top: 0.25rem;
+    accent-color: var(--accent-2);
+}
+
+.consent-check a {
+    color: var(--accent-2);
+    font-weight: 800;
+    text-decoration: none;
+}
+
+.cookie-banner {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 35;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: min(560px, calc(100vw - 32px));
+    padding: 13px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: rgba(43, 27, 18, 0.98);
+    box-shadow: var(--shadow);
+}
+
+.cookie-banner strong,
+.cookie-banner p {
+    margin: 0;
+}
+
+.cookie-banner p {
+    margin-top: 3px;
+    color: var(--text-soft);
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+
 .modal-head {
     display: flex;
     align-items: center;
@@ -1658,6 +1748,13 @@ body.sidebar-collapsed .chat-sidebar {
     .ask-app {
         width: 100vw;
         height: 100vh;
+    }
+
+    .cookie-banner {
+        right: 10px;
+        bottom: 10px;
+        flex-direction: column;
+        align-items: stretch;
     }
 
     .rate-grid {

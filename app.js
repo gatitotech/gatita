@@ -2,6 +2,7 @@ const LEGACY_API_BASE_KEY = ['CL4', 'NKR_ASK_API_BASE'].join('');
 const STORAGE_PREFIX = 'gatita_ask_';
 const LEGACY_STORAGE_PREFIX = ['cl4', 'nkr_ask_'].join('');
 const API_BASE = window.GATITA_ASK_API_BASE || window[LEGACY_API_BASE_KEY] || 'https://api.clankr.tech/ask-api';
+const LEGAL_VERSION = '2026-05-15';
 
 const storageGet = (key) => localStorage.getItem(`${STORAGE_PREFIX}${key}`)
     ?? localStorage.getItem(`${LEGACY_STORAGE_PREFIX}${key}`)
@@ -14,7 +15,7 @@ const storageRemove = (key) => {
     localStorage.removeItem(`${STORAGE_PREFIX}${key}`);
     localStorage.removeItem(`${LEGACY_STORAGE_PREFIX}${key}`);
 };
-const getTosUrl = () => state.config?.tosUrl || 'https://ask.clankr.tech/legal.html';
+const getTosUrl = () => state.config?.tosUrl || 'https://gatita.tech/legal';
 const chatUrl = (chatId) => `#/chat/${chatId}`;
 const sharedUrl = (token) => `#/share/${token}`;
 const newChatUrl = () => '#/new';
@@ -62,6 +63,11 @@ const els = {
     currentPassword: document.getElementById('currentPassword'),
     newPassword: document.getElementById('newPassword'),
     passwordError: document.getElementById('passwordError'),
+    legalGateModal: document.getElementById('legalGateModal'),
+    legalAcceptCheckbox: document.getElementById('legalAcceptCheckbox'),
+    legalAcceptButton: document.getElementById('legalAcceptButton'),
+    cookieBanner: document.getElementById('cookieBanner'),
+    cookieAcceptButton: document.getElementById('cookieAcceptButton'),
     authModal: document.getElementById('authModal'),
     closeAuthButton: document.getElementById('closeAuthButton'),
     authForm: document.getElementById('authForm'),
@@ -101,10 +107,46 @@ const makeGuestId = () => {
     return Array.from(bytes).map((value) => value.toString(16).padStart(2, '0')).join('');
 };
 
-if (!state.guestId) {
+const ensureGuestId = () => {
+    if (state.guestId) return;
     state.guestId = makeGuestId();
     storageSet('guest_id', state.guestId);
-}
+};
+
+const setRequiredCookieAck = () => {
+    const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = `gatita_required_cookies=${LEGAL_VERSION}; Max-Age=31536000; Path=/; SameSite=Lax${secure}`;
+};
+
+const hasLegalAcceptance = () => storageGet('legal_accept_version') === LEGAL_VERSION;
+const hasCookieAcknowledgement = () => storageGet('required_cookies_version') === LEGAL_VERSION
+    || document.cookie.split(';').some((cookie) => cookie.trim() === `gatita_required_cookies=${LEGAL_VERSION}`);
+
+const lockForConsent = () => {
+    document.body.classList.add('consent-locked');
+};
+
+const unlockConsent = () => {
+    document.body.classList.remove('consent-locked');
+};
+
+const acceptRequiredLegal = () => {
+    storageSet('legal_accept_version', LEGAL_VERSION);
+    storageSet('required_cookies_version', LEGAL_VERSION);
+    setRequiredCookieAck();
+    els.legalGateModal.classList.add('hidden');
+    unlockConsent();
+    initializeApp().catch((error) => {
+        showToast(error.message || 'Ask could not load.');
+        renderChats();
+        renderMessages();
+    });
+};
+
+const showCookieBannerIfNeeded = () => {
+    if (hasCookieAcknowledgement()) return;
+    els.cookieBanner.classList.remove('hidden');
+};
 
 const iconRefresh = () => {
     if (window.lucide?.createIcons) window.lucide.createIcons();
@@ -1533,13 +1575,47 @@ window.addEventListener('hashchange', () => {
     });
 });
 
+els.legalAcceptCheckbox.addEventListener('change', () => {
+    els.legalAcceptButton.disabled = !els.legalAcceptCheckbox.checked;
+});
+
+els.legalAcceptButton.addEventListener('click', () => {
+    if (!els.legalAcceptCheckbox.checked) return;
+    acceptRequiredLegal();
+});
+
+els.cookieAcceptButton.addEventListener('click', () => {
+    storageSet('required_cookies_version', LEGAL_VERSION);
+    setRequiredCookieAck();
+    els.cookieBanner.classList.add('hidden');
+});
+
+const showLegalGate = () => {
+    lockForConsent();
+    els.legalGateModal.classList.remove('hidden');
+    els.legalAcceptButton.disabled = !els.legalAcceptCheckbox.checked;
+    iconRefresh();
+};
+
+const initializeApp = async () => {
+    ensureGuestId();
+    iconRefresh();
+    await fetchConfig();
+    await fetchMe();
+    await fetchChats();
+    await routeFromHash();
+    showCookieBannerIfNeeded();
+};
+
 (async () => {
+    if (!hasLegalAcceptance()) {
+        showLegalGate();
+        return;
+    }
+
     try {
-        iconRefresh();
-        await fetchConfig();
-        await fetchMe();
-        await fetchChats();
-        await routeFromHash();
+        unlockConsent();
+        await initializeApp();
     } catch (error) {
         showToast(error.message || 'Ask could not load.');
         renderChats();

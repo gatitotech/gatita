@@ -6,7 +6,7 @@
     <title>Gatita Ask</title>
     <meta name="description" content="Gatita Ask chat interface.">
     <meta name="theme-color" content="#542d14">
-    <link rel="canonical" href="https://ask.clankr.tech/">
+    <link rel="canonical" href="https://gatita.tech/">
     <link rel="icon" href="assets/avatar.webp" type="image/webp">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,7 +19,7 @@
     <main class="ask-app">
         <aside class="chat-sidebar" aria-label="Chats">
             <div class="side-head">
-                <a class="brand" href="https://ask.clankr.tech/" aria-label="Gatita Ask home">
+                <a class="brand" href="https://gatita.tech/" aria-label="Gatita Ask home">
                     <img src="assets/avatar.webp" alt="" width="36" height="36">
                     <span>Gatita Ask</span>
                 </a>
@@ -204,6 +204,34 @@
             </div>
         </section>
     </div>
+
+    <div class="modal-backdrop consent-backdrop hidden" id="legalGateModal" role="dialog" aria-modal="true" aria-labelledby="legalGateTitle">
+        <section class="auth-modal consent-modal">
+            <div class="modal-head">
+                <h2 id="legalGateTitle">Before You Use Gatita Ask</h2>
+            </div>
+            <div class="consent-body">
+                <p>Gatita Ask requires acceptance of the Terms of Service and Privacy Policy before the chat website can be used in this browser.</p>
+                <div class="consent-note">
+                    <strong>Required cookies and storage</strong>
+                    <span>Cookies, local storage, Turnstile verification, session tokens, and security checks are required for login, spam prevention, rate limiting, API protection, saved chats, and abuse prevention. They cannot be disabled while using Gatita Ask.</span>
+                </div>
+                <label class="consent-check">
+                    <input id="legalAcceptCheckbox" type="checkbox">
+                    <span>I have read and agree to the <a href="legal.html#terms" target="_blank" rel="noopener noreferrer">Terms of Service</a> and <a href="legal.html#privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>, and I understand required cookies/storage are necessary for this service.</span>
+                </label>
+                <button class="auth-submit" id="legalAcceptButton" type="button" disabled>Accept and continue</button>
+            </div>
+        </section>
+    </div>
+
+    <aside class="cookie-banner hidden" id="cookieBanner" role="status" aria-live="polite">
+        <div>
+            <strong>Required cookies</strong>
+            <p>Gatita Ask uses required cookies and local storage for security, sessions, spam prevention, and saved preferences. There are no optional cookie categories to disable.</p>
+        </div>
+        <button class="small-btn" id="cookieAcceptButton" type="button">Got it</button>
+    </aside>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
