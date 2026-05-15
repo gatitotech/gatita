@@ -14,7 +14,7 @@ const storageRemove = (key) => {
     localStorage.removeItem(`${STORAGE_PREFIX}${key}`);
     localStorage.removeItem(`${LEGACY_STORAGE_PREFIX}${key}`);
 };
-const getTosUrl = () => state.config?.tosUrl || 'https://gatita.tech/tos.html';
+const getTosUrl = () => state.config?.tosUrl || 'https://ask.clankr.tech/legal.html';
 const chatUrl = (chatId) => `#/chat/${chatId}`;
 const sharedUrl = (token) => `#/share/${token}`;
 const newChatUrl = () => '#/new';
@@ -110,12 +110,33 @@ const iconRefresh = () => {
     if (window.lucide?.createIcons) window.lucide.createIcons();
 };
 
+const loadMathJax = () => new Promise((resolve) => {
+    if (window.MathJax?.typesetPromise) return resolve();
+    const existing = document.querySelector('script[data-mathjax]');
+    if (existing) {
+        existing.addEventListener('load', resolve, { once: true });
+        return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js';
+    script.defer = true;
+    script.dataset.mathjax = 'true';
+    script.addEventListener('load', resolve, { once: true });
+    document.head.appendChild(script);
+});
+
 const queueMathTypeset = () => {
-    if (!window.MathJax?.typesetPromise) return;
+    if (state.busy) return;
+    const hasMath = state.messages.some((message) => (
+        message.role === 'assistant'
+        && /(\$\$|\\\(|\\\[|\$[^$\n]{1,160}\$)/.test(message.content || '')
+    ));
+    if (!hasMath) return;
     clearTimeout(queueMathTypeset.timer);
-    queueMathTypeset.timer = setTimeout(() => {
+    queueMathTypeset.timer = setTimeout(async () => {
+        await loadMathJax();
         window.MathJax.typesetPromise([els.messages]).catch(() => {});
-    }, 80);
+    }, 160);
 };
 
 const showToast = (message) => {
@@ -574,6 +595,16 @@ const renderSources = (sources) => {
     `;
 };
 
+const getMarkdownHtml = (message) => {
+    const content = message.content || '';
+    if (message._markdownSource === content && message._markdownHtml) {
+        return message._markdownHtml;
+    }
+    message._markdownSource = content;
+    message._markdownHtml = renderMarkdown(content);
+    return message._markdownHtml;
+};
+
 const renderActivityPanel = (activity) => {
     if (!activity) return '';
     const thinking = Array.isArray(activity.thinking) ? activity.thinking.slice(-3) : [];
@@ -610,6 +641,8 @@ const renderActivityPanel = (activity) => {
 };
 
 const renderMessages = () => {
+    const distanceFromBottom = els.messageScroll.scrollHeight - els.messageScroll.scrollTop - els.messageScroll.clientHeight;
+    const shouldStickToBottom = state.busy || distanceFromBottom < 160;
     els.emptyState.classList.toggle('hidden', state.messages.length > 0);
     els.messages.classList.toggle('streaming-render', state.busy);
     els.messages.innerHTML = state.messages.map((message) => {
@@ -639,7 +672,9 @@ const renderMessages = () => {
             ? `<div class="file-chip-row">${message.attachments.map((file) => `<span class="file-chip">${escapeHtml(file.name || 'file')}</span>`).join('')}</div>`
             : '';
         const body = message.role === 'assistant'
-            ? `<div class="markdown-body">${renderMarkdown(message.content || '')}</div>`
+            ? (message.streaming
+                ? `<div class="stream-plain">${escapeHtml(message.content || '')}</div>`
+                : `<div class="markdown-body">${getMarkdownHtml(message)}</div>`)
             : escapeHtml(message.content || '');
         const streaming = message.streaming ? '<span class="stream-cursor" aria-hidden="true"></span>' : '';
         const sources = message.role === 'assistant' ? renderSources(message.sources) : '';
@@ -663,9 +698,22 @@ const renderMessages = () => {
         `;
     }).join('');
     requestAnimationFrame(() => {
-        els.messageScroll.scrollTop = els.messageScroll.scrollHeight;
-        if (!state.busy) queueMathTypeset();
-        iconRefresh();
+        if (shouldStickToBottom) {
+            els.messageScroll.scrollTop = els.messageScroll.scrollHeight;
+        }
+        if (!state.busy) {
+            queueMathTypeset();
+            iconRefresh();
+        }
+    });
+};
+
+const scheduleRenderMessages = () => {
+    if (scheduleRenderMessages.queued) return;
+    scheduleRenderMessages.queued = true;
+    requestAnimationFrame(() => {
+        scheduleRenderMessages.queued = false;
+        renderMessages();
     });
 };
 
@@ -1042,7 +1090,7 @@ const sendMessage = async (options = {}) => {
                 assistantDraft.loading = false;
                 assistantDraft.activity.research.push(data.message || 'Researching...');
                 assistantDraft.activity.research = assistantDraft.activity.research.slice(-8);
-                renderMessages();
+                scheduleRenderMessages();
                 return;
             }
 
@@ -1050,7 +1098,7 @@ const sendMessage = async (options = {}) => {
                 assistantDraft.loading = false;
                 assistantDraft.activity.thinking.push(data.message || 'Thinking...');
                 assistantDraft.activity.thinking = assistantDraft.activity.thinking.slice(-6);
-                renderMessages();
+                scheduleRenderMessages();
                 return;
             }
 
@@ -1061,21 +1109,21 @@ const sendMessage = async (options = {}) => {
                         data.source
                     ].slice(-8);
                 }
-                renderMessages();
+                scheduleRenderMessages();
                 return;
             }
 
             if (event === 'sources') {
                 assistantDraft.sources = data.sources || [];
                 assistantDraft.activity.sources = data.sources || assistantDraft.activity.sources;
-                renderMessages();
+                scheduleRenderMessages();
                 return;
             }
 
             if (event === 'delta') {
                 assistantDraft.loading = false;
                 assistantDraft.content += data.delta || '';
-                renderMessages();
+                scheduleRenderMessages();
                 return;
             }
 
@@ -1115,16 +1163,15 @@ const sendMessage = async (options = {}) => {
         resetTurnstile('message');
         await fetchChats();
         if (state.activeChatId) window.location.hash = chatUrl(state.activeChatId);
-        renderMessages();
     } catch (error) {
         state.messages = state.messages.filter((message) => !message.loading && !message.streaming);
-        renderMessages();
         resetTurnstile('message');
         if (error.data?.usage) updateUsage(error.data.usage);
         showToast(error.message || 'Ask could not respond.');
     } finally {
         state.busy = false;
         els.messages.classList.remove('streaming-render');
+        renderMessages();
         queueMathTypeset();
         els.sendButton.disabled = false;
     }
