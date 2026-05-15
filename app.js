@@ -39,6 +39,13 @@ const els = {
     usageText: document.getElementById('usageText'),
     accountName: document.getElementById('accountName'),
     accountButton: document.getElementById('accountButton'),
+    accountModal: document.getElementById('accountModal'),
+    closeAccountButton: document.getElementById('closeAccountButton'),
+    accountModalName: document.getElementById('accountModalName'),
+    accountModalEmail: document.getElementById('accountModalEmail'),
+    accountMinuteLimit: document.getElementById('accountMinuteLimit'),
+    accountDeepLimit: document.getElementById('accountDeepLimit'),
+    accountSignOutButton: document.getElementById('accountSignOutButton'),
     authModal: document.getElementById('authModal'),
     closeAuthButton: document.getElementById('closeAuthButton'),
     authForm: document.getElementById('authForm'),
@@ -53,6 +60,7 @@ const els = {
 
 const state = {
     config: null,
+    usage: null,
     chats: [],
     messages: [],
     activeChatId: null,
@@ -194,16 +202,32 @@ const streamApi = async (path, payload, onEvent) => {
 
 const updateUsage = (usage) => {
     if (!usage) return;
-    const researchText = usage.research?.available
-        ? ` • ∞ research • ${usage.research.deep?.dailyRemaining ?? 0}/${usage.research.deep?.dailyLimit ?? 5} deep`
-        : '';
-    els.usageText.textContent = `${usage.dailyRemaining}/${usage.dailyLimit} today • ${usage.minuteRemaining}/${usage.minuteLimit} now${researchText}`;
+    state.usage = usage;
+    els.usageText.textContent = state.user ? 'Account menu' : 'Guest mode';
+    renderAccountWindow();
+};
+
+const renderAccountWindow = () => {
+    if (!els.accountModalName) return;
+    const usage = state.usage || {};
+    const minuteRemaining = usage.minuteRemaining ?? state.config?.limits?.perMinute ?? '-';
+    const minuteLimit = usage.minuteLimit ?? state.config?.limits?.perMinute ?? '-';
+    const deep = usage.research?.deep || {};
+    const deepRemaining = deep.dailyRemaining ?? state.config?.limits?.deepResearchDaily ?? '-';
+    const deepLimit = deep.dailyLimit ?? state.config?.limits?.deepResearchDaily ?? '-';
+
+    els.accountModalName.textContent = state.user?.displayName || state.user?.email || 'Guest';
+    els.accountModalEmail.textContent = state.user?.email || 'Signed out';
+    els.accountMinuteLimit.textContent = `${minuteRemaining}/${minuteLimit} left this minute`;
+    els.accountDeepLimit.textContent = state.user
+        ? `${deepRemaining}/${deepLimit} left today`
+        : 'Sign in required';
 };
 
 const updateAccount = () => {
     if (state.user) {
         els.accountName.textContent = state.user.displayName || state.user.email || 'Account';
-        els.accountButton.textContent = 'Sign out';
+        els.accountButton.textContent = 'Account';
         els.researchToggle.disabled = false;
         els.deepResearchToggle.disabled = false;
         els.researchToggle.closest('.research-control')?.classList.remove('disabled');
@@ -211,6 +235,7 @@ const updateAccount = () => {
     } else {
         els.accountName.textContent = 'Guest';
         els.accountButton.textContent = 'Sign in';
+        els.usageText.textContent = 'Guest mode';
         els.researchToggle.checked = false;
         els.deepResearchToggle.checked = false;
         els.researchToggle.disabled = true;
@@ -218,6 +243,8 @@ const updateAccount = () => {
         els.researchToggle.closest('.research-control')?.classList.add('disabled');
         els.deepResearchToggle.closest('.research-control')?.classList.add('disabled');
     }
+    if (state.user) els.usageText.textContent = 'Account menu';
+    renderAccountWindow();
     updateSettingsSummary();
 };
 
@@ -915,6 +942,15 @@ const closeAuthModal = () => {
     els.authError.textContent = '';
 };
 
+const openAccountModal = () => {
+    renderAccountWindow();
+    els.accountModal.classList.remove('hidden');
+};
+
+const closeAccountModal = () => {
+    els.accountModal.classList.add('hidden');
+};
+
 const setAuthMode = (mode) => {
     state.authMode = mode;
     document.querySelectorAll('.auth-tab').forEach((button) => {
@@ -971,6 +1007,7 @@ const signOut = async () => {
     state.messages = [];
     storageRemove('token');
     updateAccount();
+    closeAccountModal();
     await fetchMe();
     await fetchChats();
     renderMessages();
@@ -1085,14 +1122,18 @@ document.addEventListener('click', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape' || els.settingsMenu.classList.contains('hidden')) return;
-    els.settingsMenu.classList.add('hidden');
-    els.settingsButton.setAttribute('aria-expanded', 'false');
+    if (event.key !== 'Escape') return;
+    if (!els.settingsMenu.classList.contains('hidden')) {
+        els.settingsMenu.classList.add('hidden');
+        els.settingsButton.setAttribute('aria-expanded', 'false');
+    }
+    if (!els.accountModal.classList.contains('hidden')) closeAccountModal();
+    if (!els.authModal.classList.contains('hidden')) closeAuthModal();
 });
 
 els.accountButton.addEventListener('click', () => {
     if (state.user) {
-        signOut().catch((error) => showToast(error.message));
+        openAccountModal();
     } else {
         openAuthModal();
     }
@@ -1101,6 +1142,13 @@ els.accountButton.addEventListener('click', () => {
 els.closeAuthButton.addEventListener('click', closeAuthModal);
 els.authModal.addEventListener('click', (event) => {
     if (event.target === els.authModal) closeAuthModal();
+});
+els.closeAccountButton.addEventListener('click', closeAccountModal);
+els.accountModal.addEventListener('click', (event) => {
+    if (event.target === els.accountModal) closeAccountModal();
+});
+els.accountSignOutButton.addEventListener('click', () => {
+    signOut().catch((error) => showToast(error.message));
 });
 
 document.querySelectorAll('.auth-tab').forEach((button) => {

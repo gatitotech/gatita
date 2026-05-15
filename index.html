@@ -33,7 +33,7 @@
                     <span class="account-name" id="accountName">Guest</span>
                     <span class="usage-text" id="usageText">Loading...</span>
                 </div>
-                <button class="small-btn" id="accountButton" type="button">Sign in</button>
+                <button class="small-btn" id="accountButton" type="button">Account</button>
             </div>
 
             <nav class="chat-list" id="chatList" aria-label="Saved chats"></nav>
@@ -49,7 +49,7 @@
                     <div class="settings-wrap">
                         <button class="settings-button" id="settingsButton" type="button" aria-expanded="false" aria-controls="settingsMenu">
                             <i data-lucide="sliders-horizontal"></i>
-                            <span>Options</span>
+                            <span>Settings</span>
                         </button>
                         <div class="settings-menu hidden" id="settingsMenu">
                             <label class="select-shell">
@@ -140,6 +140,42 @@
                 <p class="form-error" id="authError" role="alert"></p>
                 <button class="auth-submit" type="submit">Continue</button>
             </form>
+        </section>
+    </div>
+
+    <div class="modal-backdrop hidden" id="accountModal" role="dialog" aria-modal="true" aria-labelledby="accountTitle">
+        <section class="auth-modal account-window">
+            <div class="modal-head">
+                <h2 id="accountTitle">Account</h2>
+                <button class="icon-btn" id="closeAccountButton" type="button" aria-label="Close">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+
+            <div class="account-body">
+                <div class="account-card">
+                    <span class="account-label">Signed in as</span>
+                    <strong id="accountModalName">Account</strong>
+                    <span id="accountModalEmail"></span>
+                </div>
+
+                <div class="rate-grid">
+                    <div class="rate-card">
+                        <span class="account-label">Messages</span>
+                        <strong id="accountMinuteLimit">-</strong>
+                        <span>Per-minute limit</span>
+                    </div>
+                    <div class="rate-card">
+                        <span class="account-label">Deep research</span>
+                        <strong id="accountDeepLimit">-</strong>
+                        <span>Daily allowance</span>
+                    </div>
+                </div>
+
+                <div class="account-actions">
+                    <button class="small-btn" id="accountSignOutButton" type="button">Sign out</button>
+                </div>
+            </div>
         </section>
     </div>
 
