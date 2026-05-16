@@ -7,11 +7,11 @@ const STREAM_RENDER_INTERVAL_MS = 40;
 const NOTEBOOK_BLOCK_RE = /<gatita-notebook\b([^>]*)>([\s\S]*?)<\/gatita-notebook>/gi;
 const NOTEBOOK_PARTIAL_RE = /<gatita-notebook\b[\s\S]*$/i;
 const PROMPT_TEMPLATES = {
-    coding: 'Debug this code and explain the fix clearly. I will paste the code below:\\n\\n```\\n// paste code here\\n```',
+    coding: 'Debug this code and explain the fix clearly. I will paste the code below:\n\n```\n// paste code here\n```',
     'coding-notebook': 'Create a small starter project in a notebook file. Use one clear file and explain what it does. Topic: a simple todo app.',
     school: 'Make me a study guide for this topic with key terms, examples, and a quick self-quiz: ',
     'school-essay': 'Help me outline a strong essay in a notebook. Topic: [topic]. Include thesis options, structure, evidence ideas, and a first draft section.',
-    writing: 'Rewrite this to be clearer, more natural, and more polished while keeping my meaning:\\n\\n',
+    writing: 'Rewrite this to be clearer, more natural, and more polished while keeping my meaning:\n\n',
     'writing-story': 'Give me three story openings with different tones, then put the best one into a notebook for editing. Genre: ',
     research: 'Make a concise research brief with current context, important facts, and open questions. Topic: ',
     'research-compare': 'Compare two sides of this topic fairly, list what evidence would settle the disagreement, and suggest reliable sources to check: '
@@ -500,7 +500,7 @@ const renderChats = () => {
         <section class="chat-group">
             <h3>${escapeHtml(name)}</h3>
             ${chats.map((chat) => `
-                <article class="chat-row ${chat.id === state.activeChatId ? 'active' : ''}" data-chat-row="${chat.id}">
+                <article class="chat-row has-actions ${chat.id === state.activeChatId ? 'active' : ''}" data-chat-row="${chat.id}">
                     <button class="chat-item-main" type="button" data-chat-id="${chat.id}">
                         <span>
                             <span class="chat-title">${chat.pinned ? 'Pinned ' : ''}${escapeHtml(chat.title || 'New chat')}</span>
@@ -1467,9 +1467,9 @@ const sendMessage = async (options = {}) => {
     state.busy = true;
     els.sendButton.disabled = true;
     sendMessage.userDraft = null;
+    const isTemporary = state.temporaryMode;
 
     try {
-        const isTemporary = state.temporaryMode;
         const temporaryHistory = isTemporary
             ? state.messages
                 .filter((message) => message.role === 'user' || message.role === 'assistant')
@@ -1649,6 +1649,7 @@ const sendMessage = async (options = {}) => {
         }
     } catch (error) {
         state.messages = state.messages.filter((message) => !message.loading && !message.streaming);
+        if (isTemporary) state.temporaryMessages = state.messages;
         resetTurnstile('message');
         if (error.data?.usage) updateUsage(error.data.usage);
         showToast(error.message || 'Ask could not respond.');
@@ -1722,6 +1723,9 @@ const submitAuth = async () => {
         resetTurnstile('auth');
         closeAuthModal();
         state.activeChatId = null;
+        state.activeSharedToken = '';
+        state.temporaryMode = false;
+        els.temporaryToggle.checked = false;
         state.messages = [];
         window.location.hash = newChatUrl();
         await fetchMe();
@@ -1738,6 +1742,9 @@ const signOut = async () => {
     state.authToken = '';
     state.user = null;
     state.activeChatId = null;
+    state.activeSharedToken = '';
+    state.temporaryMode = false;
+    els.temporaryToggle.checked = false;
     state.messages = [];
     storageRemove('token');
     updateAccount();
@@ -2044,6 +2051,7 @@ document.addEventListener('keydown', (event) => {
     }
     if (!els.accountModal.classList.contains('hidden')) closeAccountModal();
     if (!els.authModal.classList.contains('hidden')) closeAuthModal();
+    if (state.notebookOpen) closeNotebookPanel();
 });
 
 els.accountButton.addEventListener('click', () => {
@@ -2126,6 +2134,8 @@ const showLegalGate = () => {
 
 const initializeApp = async () => {
     ensureGuestId();
+    state.notebook = loadNotebook();
+    renderNotebookPanel();
     iconRefresh();
     await fetchConfig();
     await fetchMe();
