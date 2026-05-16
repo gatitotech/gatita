@@ -56,10 +56,17 @@ const els = {
     newChatButton: document.getElementById('newChatButton'),
     settingsButton: document.getElementById('settingsButton'),
     settingsMenu: document.getElementById('settingsMenu'),
+    settingsModelName: document.getElementById('settingsModelName'),
     settingsSummary: document.getElementById('settingsSummary'),
     sidebarToggleButton: document.getElementById('sidebarToggleButton'),
     modelSelect: document.getElementById('modelSelect'),
+    modelSelectButton: document.getElementById('modelSelectButton'),
+    modelSelectValue: document.getElementById('modelSelectValue'),
+    modelSelectMenu: document.getElementById('modelSelectMenu'),
     personalitySelect: document.getElementById('personalitySelect'),
+    personalitySelectButton: document.getElementById('personalitySelectButton'),
+    personalitySelectValue: document.getElementById('personalitySelectValue'),
+    personalitySelectMenu: document.getElementById('personalitySelectMenu'),
     thinkingToggle: document.getElementById('thinkingToggle'),
     researchToggle: document.getElementById('researchToggle'),
     autoWebToggle: document.getElementById('autoWebToggle'),
@@ -138,6 +145,7 @@ const state = {
     notebook: null,
     notebookDrafts: new Map(),
     notebookOpen: false,
+    openCustomSelect: '',
     activeStreams: new Map(),
     busy: false
 };
@@ -625,6 +633,8 @@ const renderSelects = () => {
     els.autoWebToggle.checked = savedAutoWeb;
     els.temporaryToggle.checked = state.temporaryMode;
     els.deepResearchToggle.checked = savedDeepResearch && Boolean(state.user);
+    renderCustomSelect('model');
+    renderCustomSelect('personality');
     updateSettingsSummary();
 };
 
@@ -638,7 +648,11 @@ const updateSettingsSummary = () => {
         els.deepResearchToggle.checked ? 'Deep research' : (els.researchToggle.checked ? 'Research' : ''),
         state.temporaryMode ? 'Temporary' : ''
     ].filter(Boolean);
-    els.settingsSummary.textContent = [modelName, personalityName, ...extras].join(' · ');
+    if (els.settingsModelName) els.settingsModelName.textContent = modelName;
+    const chips = [personalityName, ...extras];
+    els.settingsSummary.innerHTML = chips.map((chip) => (
+        `<span class="settings-chip">${escapeHtml(chip)}</span>`
+    )).join('');
 };
 
 const renderChats = () => {
@@ -707,6 +721,81 @@ const escapeHtml = (value) => String(value || '')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+
+const getCustomSelectParts = (kind) => {
+    if (kind === 'model') {
+        return {
+            select: els.modelSelect,
+            button: els.modelSelectButton,
+            value: els.modelSelectValue,
+            menu: els.modelSelectMenu
+        };
+    }
+    return {
+        select: els.personalitySelect,
+        button: els.personalitySelectButton,
+        value: els.personalitySelectValue,
+        menu: els.personalitySelectMenu
+    };
+};
+
+const closeCustomSelects = () => {
+    state.openCustomSelect = '';
+    ['model', 'personality'].forEach((kind) => {
+        const parts = getCustomSelectParts(kind);
+        parts.menu?.classList.add('hidden');
+        parts.button?.setAttribute('aria-expanded', 'false');
+    });
+};
+
+const renderCustomSelect = (kind) => {
+    const { select, button, value, menu } = getCustomSelectParts(kind);
+    if (!select || !button || !value || !menu) return;
+
+    const options = Array.from(select.options || []);
+    const selected = options.find((option) => option.value === select.value) || options[0];
+    value.textContent = selected?.textContent || (kind === 'model' ? 'Model' : 'Personality');
+    button.disabled = options.length === 0;
+    button.setAttribute('aria-expanded', state.openCustomSelect === kind ? 'true' : 'false');
+
+    menu.innerHTML = options.map((option) => {
+        const active = option.value === select.value;
+        return `
+            <button class="custom-select-option ${active ? 'active' : ''}" type="button" role="option" aria-selected="${active ? 'true' : 'false'}" data-custom-select-value="${escapeHtml(option.value)}">
+                <span>${escapeHtml(option.textContent)}</span>
+                ${active ? '<i data-lucide="check"></i>' : ''}
+            </button>
+        `;
+    }).join('');
+    menu.classList.toggle('hidden', state.openCustomSelect !== kind);
+    iconRefresh();
+};
+
+const toggleCustomSelect = (kind) => {
+    state.openCustomSelect = state.openCustomSelect === kind ? '' : kind;
+    renderCustomSelect('model');
+    renderCustomSelect('personality');
+};
+
+const chooseCustomSelectValue = (kind, nextValue) => {
+    const { select } = getCustomSelectParts(kind);
+    if (!select) return;
+    if (select.value !== nextValue) {
+        select.value = nextValue;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    closeCustomSelects();
+};
+
+const bindCustomSelect = (kind) => {
+    const { button, menu } = getCustomSelectParts(kind);
+    button?.addEventListener('click', () => toggleCustomSelect(kind));
+    menu?.addEventListener('click', (event) => {
+        const option = event.target.closest('[data-custom-select-value]');
+        if (!option) return;
+        chooseCustomSelectValue(kind, option.dataset.customSelectValue || '');
+    });
+};
 
 const parseNotebookAttributes = (value) => {
     const attrs = {};
@@ -2247,14 +2336,19 @@ els.newChatButton.addEventListener('click', startNewChat);
 els.modelSelect.addEventListener('change', () => {
     storageSet('model', els.modelSelect.value);
     if (state.activeChatId) updateChat(state.activeChatId, { modelId: els.modelSelect.value }).catch(() => {});
+    renderCustomSelect('model');
     updateSettingsSummary();
 });
 
 els.personalitySelect.addEventListener('change', () => {
     storageSet('personality', els.personalitySelect.value);
     if (state.activeChatId) updateChat(state.activeChatId, { personality: els.personalitySelect.value }).catch(() => {});
+    renderCustomSelect('personality');
     updateSettingsSummary();
 });
+
+bindCustomSelect('model');
+bindCustomSelect('personality');
 
 els.thinkingToggle.addEventListener('change', () => {
     storageSet('thinking', els.thinkingToggle.checked ? '1' : '0');
@@ -2308,6 +2402,7 @@ els.settingsButton.addEventListener('click', () => {
     const willOpen = els.settingsMenu.classList.contains('hidden');
     els.settingsMenu.classList.toggle('hidden', !willOpen);
     els.settingsButton.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    if (!willOpen) closeCustomSelects();
 });
 
 els.sidebarToggleButton.addEventListener('click', toggleSidebar);
@@ -2391,10 +2486,12 @@ els.notebookHistory.addEventListener('click', (event) => {
 
 document.addEventListener('click', (event) => {
     const target = event.target;
+    if (!target.closest?.('.custom-select-shell')) closeCustomSelects();
     if (!els.settingsMenu || els.settingsMenu.classList.contains('hidden')) return;
     if (els.settingsMenu.contains(target) || els.settingsButton.contains(target)) return;
     els.settingsMenu.classList.add('hidden');
     els.settingsButton.setAttribute('aria-expanded', 'false');
+    closeCustomSelects();
 });
 
 const isEditableShortcutTarget = (target) => Boolean(target?.closest?.(
@@ -2425,6 +2522,7 @@ document.addEventListener('keydown', (event) => {
         return;
     }
     if (event.key !== 'Escape') return;
+    closeCustomSelects();
     if (!els.settingsMenu.classList.contains('hidden')) {
         els.settingsMenu.classList.add('hidden');
         els.settingsButton.setAttribute('aria-expanded', 'false');

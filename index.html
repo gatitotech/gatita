@@ -53,7 +53,8 @@
                     </button>
                     <div class="mode-summary">
                         <span class="mode-label">Current setup</span>
-                        <span id="settingsSummary">Loading...</span>
+                        <strong class="settings-model-name" id="settingsModelName">Loading...</strong>
+                        <div class="settings-chip-row" id="settingsSummary" aria-label="Enabled settings"></div>
                     </div>
                     <div class="settings-wrap">
                         <button class="settings-button" id="settingsButton" type="button" aria-expanded="false" aria-controls="settingsMenu">
@@ -61,14 +62,24 @@
                             <span>Settings</span>
                         </button>
                         <div class="settings-menu hidden" id="settingsMenu">
-                            <label class="select-shell">
+                            <div class="select-shell custom-select-shell" data-custom-select="model">
                                 <span>Model</span>
-                                <select id="modelSelect"></select>
-                            </label>
-                            <label class="select-shell">
+                                <select class="native-select-hidden" id="modelSelect" aria-hidden="true" tabindex="-1"></select>
+                                <button class="custom-select-button" id="modelSelectButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="modelSelectMenu">
+                                    <span id="modelSelectValue">Model</span>
+                                    <i data-lucide="chevron-down"></i>
+                                </button>
+                                <div class="custom-select-menu hidden" id="modelSelectMenu" role="listbox" aria-label="Model"></div>
+                            </div>
+                            <div class="select-shell custom-select-shell" data-custom-select="personality">
                                 <span>Personality</span>
-                                <select id="personalitySelect"></select>
-                            </label>
+                                <select class="native-select-hidden" id="personalitySelect" aria-hidden="true" tabindex="-1"></select>
+                                <button class="custom-select-button" id="personalitySelectButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="personalitySelectMenu">
+                                    <span id="personalitySelectValue">Personality</span>
+                                    <i data-lucide="chevron-down"></i>
+                                </button>
+                                <div class="custom-select-menu hidden" id="personalitySelectMenu" role="listbox" aria-label="Personality"></div>
+                            </div>
                             <label class="thinking-toggle">
                                 <input id="thinkingToggle" type="checkbox">
                                 <span class="toggle-track"></span>
