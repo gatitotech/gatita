@@ -17,6 +17,12 @@
     --danger: #ff7b8f;
     --shadow: 0 24px 80px rgba(16, 8, 3, 0.48);
     --radius: 8px;
+    --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+    --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-settle: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --duration-quick: 180ms;
+    --duration-base: 280ms;
+    --duration-slow: 480ms;
     color-scheme: dark;
 }
 
@@ -40,6 +46,12 @@ body {
         linear-gradient(135deg, rgba(84, 45, 20, 0.28), transparent 32%),
         linear-gradient(225deg, rgba(143, 174, 154, 0.1), transparent 26%),
         linear-gradient(180deg, #120b08 0%, var(--bg) 50%, #21150f 100%);
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+}
+
+html {
+    scroll-behavior: smooth;
 }
 
 button,
@@ -75,6 +87,8 @@ textarea {
     filter: none;
     opacity: 0.42;
     transform: translate3d(0, 0, 0);
+    animation: smokeDrift 28s var(--ease-standard) infinite alternate;
+    will-change: transform, opacity;
 }
 
 .ask-app {
@@ -91,6 +105,21 @@ textarea {
     background: rgba(24, 15, 10, 0.76);
     box-shadow: var(--shadow);
     backdrop-filter: none;
+    transition:
+        grid-template-columns var(--duration-slow) var(--ease-emphasized),
+        grid-template-rows var(--duration-slow) var(--ease-emphasized),
+        background var(--duration-slow) var(--ease-standard),
+        border-color var(--duration-base) var(--ease-standard),
+        box-shadow var(--duration-base) var(--ease-standard),
+        opacity var(--duration-base) var(--ease-standard),
+        filter var(--duration-base) var(--ease-standard),
+        transform var(--duration-base) var(--ease-standard);
+}
+
+@supports (height: 100dvh) {
+    .ask-app {
+        height: calc(100dvh - 16px);
+    }
 }
 
 body.notebook-open .ask-app {
@@ -113,6 +142,12 @@ body.sidebar-collapsed .chat-sidebar {
 body.consent-locked .ask-app {
     pointer-events: none;
     opacity: 0.42;
+    filter: saturate(0.82);
+    transform: scale(0.996);
+    transition:
+        opacity var(--duration-base) var(--ease-standard),
+        filter var(--duration-base) var(--ease-standard),
+        transform var(--duration-base) var(--ease-standard);
 }
 
 .chat-sidebar {
@@ -125,6 +160,16 @@ body.consent-locked .ask-app {
     background:
         linear-gradient(180deg, rgba(54, 34, 22, 0.92), rgba(22, 14, 10, 0.82)),
         rgba(30, 19, 13, 0.92);
+    transition:
+        opacity var(--duration-base) var(--ease-standard),
+        transform var(--duration-slow) var(--ease-emphasized),
+        border-color var(--duration-base) var(--ease-standard);
+    will-change: transform, opacity;
+}
+
+body.sidebar-collapsed .chat-sidebar {
+    opacity: 0;
+    transform: translateX(-14px);
 }
 
 .side-head,
@@ -174,7 +219,13 @@ body.consent-locked .ask-app {
     border: 1px solid transparent;
     border-radius: var(--radius);
     cursor: pointer;
-    transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+    transition:
+        transform var(--duration-base) var(--ease-emphasized),
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard),
+        color var(--duration-base) var(--ease-standard),
+        box-shadow var(--duration-base) var(--ease-standard),
+        opacity var(--duration-base) var(--ease-standard);
 }
 
 .icon-btn {
@@ -199,6 +250,22 @@ body.consent-locked .ask-app {
 .chat-item-main:hover {
     transform: translateY(-1px);
     border-color: var(--line-strong);
+}
+
+.icon-btn:active,
+.small-btn:active,
+.send-btn:active,
+.auth-submit:active,
+.chat-item-main:active,
+.settings-button:active {
+    transform: translateY(0) scale(0.985);
+    transition-duration: 90ms;
+}
+
+.icon-btn:hover,
+.settings-button:hover,
+.small-btn:hover {
+    background: rgba(229, 177, 109, 0.1);
 }
 
 .account-strip {
@@ -260,6 +327,16 @@ body.consent-locked .ask-app {
     border: 1px solid var(--line);
     border-radius: var(--radius);
     background: rgba(255, 255, 255, 0.045);
+    transition:
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard),
+        box-shadow var(--duration-base) var(--ease-standard);
+}
+
+.chat-search-wrap:focus-within {
+    border-color: var(--line-strong);
+    background: rgba(255, 255, 255, 0.07);
+    box-shadow: 0 0 0 3px rgba(229, 177, 109, 0.1);
 }
 
 .chat-search-wrap svg {
@@ -299,6 +376,11 @@ body.consent-locked .ask-app {
     border: 1px solid transparent;
     border-radius: var(--radius);
     background: rgba(255, 255, 255, 0.025);
+    transition:
+        transform var(--duration-base) var(--ease-emphasized),
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard),
+        box-shadow var(--duration-base) var(--ease-standard);
 }
 
 .chat-row.has-actions::after {
@@ -311,12 +393,13 @@ body.consent-locked .ask-app {
     content: "";
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.16s ease;
+    transition: opacity var(--duration-base) var(--ease-standard);
 }
 
 .chat-row.active {
     background: rgba(229, 177, 109, 0.12);
     border-color: rgba(229, 177, 109, 0.34);
+    box-shadow: inset 3px 0 0 rgba(229, 177, 109, 0.55);
 }
 
 .chat-item-main {
@@ -331,7 +414,12 @@ body.consent-locked .ask-app {
     text-align: left;
     background: transparent;
     cursor: pointer;
-    transition: padding-right 0.16s ease, transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+    transition:
+        padding-right var(--duration-base) var(--ease-emphasized),
+        transform var(--duration-base) var(--ease-emphasized),
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard),
+        color var(--duration-base) var(--ease-standard);
 }
 
 .chat-actions {
@@ -350,8 +438,11 @@ body.consent-locked .ask-app {
     box-shadow: 0 10px 26px rgba(16, 8, 3, 0.3);
     opacity: 0;
     pointer-events: none;
-    transform: translateY(-3px);
-    transition: opacity 0.16s ease, transform 0.16s ease;
+    transform: translateY(-5px) scale(0.98);
+    transform-origin: top right;
+    transition:
+        opacity var(--duration-base) var(--ease-standard),
+        transform var(--duration-base) var(--ease-emphasized);
 }
 
 .chat-actions button,
@@ -367,6 +458,11 @@ body.consent-locked .ask-app {
     color: var(--text-soft);
     background: rgba(255, 255, 255, 0.045);
     cursor: pointer;
+    transition:
+        transform var(--duration-base) var(--ease-emphasized),
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard),
+        color var(--duration-base) var(--ease-standard);
 }
 
 .chat-actions svg,
@@ -384,7 +480,22 @@ body.consent-locked .ask-app {
 .markdown-body pre:focus-within .copy-code-btn {
     opacity: 1;
     pointer-events: auto;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
+}
+
+.chat-actions button:hover,
+.message-actions button:hover,
+.copy-code-btn:hover {
+    transform: translateY(-1px);
+    border-color: var(--line-strong);
+    color: var(--text);
+    background: rgba(229, 177, 109, 0.11);
+}
+
+.chat-row:hover {
+    transform: translateY(-1px);
+    border-color: rgba(229, 177, 109, 0.18);
+    background: rgba(255, 255, 255, 0.04);
 }
 
 .chat-row.has-actions:hover::after,
@@ -464,7 +575,9 @@ body.consent-locked .ask-app {
     background: rgba(229, 177, 109, 0.1);
     font-size: 0.72rem;
     text-align: center;
-    transition: opacity 0.16s ease;
+    transition:
+        opacity var(--duration-base) var(--ease-standard),
+        transform var(--duration-base) var(--ease-emphasized);
 }
 
 .chat-main {
@@ -472,12 +585,14 @@ body.consent-locked .ask-app {
     min-width: 0;
     min-height: 0;
     grid-template-rows: auto minmax(0, 1fr) auto;
+    transition: opacity var(--duration-base) var(--ease-standard);
 }
 
 .chat-topbar {
     min-height: 64px;
     padding: 10px 16px;
     background: rgba(31, 20, 14, 0.76);
+    backdrop-filter: blur(14px);
 }
 
 .topbar-inner {
@@ -537,6 +652,11 @@ body.consent-locked .ask-app {
     line-height: 1.25;
     text-overflow: ellipsis;
     white-space: nowrap;
+    animation: chipIn var(--duration-base) var(--ease-emphasized) both;
+    transition:
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard),
+        color var(--duration-base) var(--ease-standard);
 }
 
 .settings-wrap {
@@ -557,6 +677,14 @@ body.consent-locked .ask-app {
     font-weight: 800;
 }
 
+.settings-button[aria-expanded="true"],
+.notebook-open-btn[aria-expanded="true"] {
+    color: var(--accent-2);
+    background: rgba(229, 177, 109, 0.12);
+    border-color: rgba(229, 177, 109, 0.32);
+    box-shadow: 0 0 0 3px rgba(229, 177, 109, 0.08);
+}
+
 .settings-button svg {
     width: 18px;
     height: 18px;
@@ -575,7 +703,13 @@ body.consent-locked .ask-app {
     border-radius: var(--radius);
     background: rgba(43, 27, 18, 0.98);
     box-shadow: var(--shadow);
-    animation: menuIn 0.16s ease both;
+    transform-origin: top right;
+    animation: menuIn var(--duration-base) var(--ease-emphasized) both;
+}
+
+.settings-menu.is-closing {
+    pointer-events: none;
+    animation: menuOut var(--duration-quick) var(--ease-standard) both;
 }
 
 .select-shell {
@@ -589,6 +723,10 @@ body.consent-locked .ask-app {
     border: 1px solid var(--line);
     border-radius: var(--radius);
     background: rgba(255, 255, 255, 0.045);
+    transition:
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard),
+        box-shadow var(--duration-base) var(--ease-standard);
 }
 
 .select-shell > span {
@@ -632,6 +770,11 @@ body.consent-locked .ask-app {
     cursor: pointer;
     font-weight: 800;
     text-align: left;
+    transition:
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard),
+        box-shadow var(--duration-base) var(--ease-standard),
+        transform var(--duration-base) var(--ease-emphasized);
 }
 
 .custom-select-button span {
@@ -647,7 +790,7 @@ body.consent-locked .ask-app {
     height: 16px;
     flex: 0 0 auto;
     color: var(--accent-2);
-    transition: transform 0.16s ease;
+    transition: transform var(--duration-base) var(--ease-emphasized);
 }
 
 .custom-select-button[aria-expanded="true"] {
@@ -657,6 +800,13 @@ body.consent-locked .ask-app {
 
 .custom-select-button[aria-expanded="true"] svg {
     transform: rotate(180deg);
+}
+
+.custom-select-button:hover {
+    border-color: rgba(229, 177, 109, 0.34);
+    background:
+        linear-gradient(135deg, rgba(229, 177, 109, 0.12), rgba(143, 174, 154, 0.06)),
+        rgba(20, 13, 9, 0.78);
 }
 
 .custom-select-menu {
@@ -674,7 +824,8 @@ body.consent-locked .ask-app {
     border-radius: var(--radius);
     background: rgba(31, 20, 14, 0.99);
     box-shadow: 0 18px 50px rgba(16, 8, 3, 0.46);
-    animation: menuIn 0.14s ease both;
+    transform-origin: top;
+    animation: menuIn var(--duration-base) var(--ease-emphasized) both;
 }
 
 .custom-select-option {
@@ -691,6 +842,11 @@ body.consent-locked .ask-app {
     cursor: pointer;
     font-weight: 800;
     text-align: left;
+    transition:
+        transform var(--duration-base) var(--ease-emphasized),
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard),
+        color var(--duration-base) var(--ease-standard);
 }
 
 .custom-select-option span {
@@ -712,6 +868,7 @@ body.consent-locked .ask-app {
     color: var(--text);
     background: rgba(255, 255, 255, 0.055);
     outline: 0;
+    transform: translateX(2px);
 }
 
 .custom-select-option.active {
@@ -743,6 +900,18 @@ body.consent-locked .ask-app {
     font-size: 0.86rem;
     font-weight: 700;
     cursor: pointer;
+    transition:
+        transform var(--duration-base) var(--ease-emphasized),
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard),
+        color var(--duration-base) var(--ease-standard);
+}
+
+.thinking-toggle:hover {
+    transform: translateY(-1px);
+    border-color: rgba(229, 177, 109, 0.26);
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.06);
 }
 
 .thinking-toggle input {
@@ -758,7 +927,10 @@ body.consent-locked .ask-app {
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.13);
     border: 1px solid var(--line);
-    transition: background 0.2s ease, border-color 0.2s ease;
+    transition:
+        background var(--duration-base) var(--ease-standard),
+        border-color var(--duration-base) var(--ease-standard),
+        box-shadow var(--duration-base) var(--ease-standard);
 }
 
 .toggle-track::after {
@@ -770,12 +942,15 @@ body.consent-locked .ask-app {
     border-radius: 50%;
     background: #e8d1b3;
     content: "";
-    transition: transform 0.2s ease, background 0.2s ease;
+    transition:
+        transform var(--duration-base) var(--ease-settle),
+        background var(--duration-base) var(--ease-standard);
 }
 
 .thinking-toggle input:checked + .toggle-track {
     background: rgba(229, 177, 109, 0.28);
     border-color: rgba(229, 177, 109, 0.45);
+    box-shadow: 0 0 18px rgba(229, 177, 109, 0.12);
 }
 
 .thinking-toggle input:checked + .toggle-track::after {
@@ -798,6 +973,12 @@ body.consent-locked .ask-app {
     overflow-y: auto;
     overscroll-behavior: contain;
     padding: 26px clamp(16px, 4vw, 56px);
+    scroll-behavior: smooth;
+    scrollbar-color: rgba(229, 177, 109, 0.28) transparent;
+}
+
+.message-scroll.streaming-scroll {
+    scroll-behavior: auto;
 }
 
 .empty-state {
@@ -809,6 +990,7 @@ body.consent-locked .ask-app {
     color: rgba(255, 247, 236, 0.74);
     pointer-events: none;
     text-align: center;
+    animation: emptyIn var(--duration-slow) var(--ease-emphasized) both;
 }
 
 .empty-state.hidden {
@@ -819,7 +1001,8 @@ body.consent-locked .ask-app {
     justify-self: center;
     border-radius: 18px;
     opacity: 0.92;
-    animation: none;
+    animation: breathe 5.8s var(--ease-standard) infinite;
+    box-shadow: 0 18px 48px rgba(16, 8, 3, 0.28), 0 0 34px rgba(229, 177, 109, 0.16);
 }
 
 .empty-state h1 {
@@ -851,7 +1034,7 @@ body.consent-locked .ask-app {
 }
 
 .message.entering {
-    animation: messageIn 0.26s ease both;
+    animation: messageIn var(--duration-slow) var(--ease-emphasized) both;
 }
 
 .messages.streaming-render .message,
@@ -886,8 +1069,11 @@ body.consent-locked .ask-app {
     gap: 6px;
     opacity: 0;
     pointer-events: none;
-    transform: translateY(-3px);
-    transition: opacity 0.16s ease, transform 0.16s ease;
+    transform: translateY(-5px) scale(0.98);
+    transform-origin: top;
+    transition:
+        opacity var(--duration-base) var(--ease-standard),
+        transform var(--duration-base) var(--ease-emphasized);
 }
 
 .message.user .message-actions {
@@ -904,6 +1090,11 @@ body.consent-locked .ask-app {
     overflow-wrap: anywhere;
     line-height: 1.55;
     font-size: 0.96rem;
+    transition:
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard),
+        box-shadow var(--duration-base) var(--ease-standard),
+        transform var(--duration-base) var(--ease-emphasized);
 }
 
 .message.user .bubble {
@@ -917,6 +1108,11 @@ body.consent-locked .ask-app {
     color: var(--text);
     background: rgba(255, 255, 255, 0.055);
     white-space: normal;
+    box-shadow: 0 10px 34px rgba(16, 8, 3, 0.16);
+}
+
+.message:hover .bubble {
+    border-color: rgba(229, 177, 109, 0.22);
 }
 
 .markdown-body {
@@ -1031,8 +1227,10 @@ body.consent-locked .ask-app {
     right: 8px;
     opacity: 0;
     pointer-events: none;
-    transform: translateY(-3px);
-    transition: opacity 0.16s ease, transform 0.16s ease;
+    transform: translateY(-5px) scale(0.98);
+    transition:
+        opacity var(--duration-base) var(--ease-standard),
+        transform var(--duration-base) var(--ease-emphasized);
 }
 
 .markdown-body pre code {
@@ -1118,7 +1316,7 @@ body.consent-locked .ask-app {
     border-radius: 2px;
     background: var(--accent-2);
     vertical-align: -0.16em;
-    animation: cursorBlink 0.9s ease-in-out infinite;
+    animation: cursorBlink 1.05s ease-in-out infinite;
 }
 
 .policy-banner {
@@ -1132,7 +1330,7 @@ body.consent-locked .ask-app {
 }
 
 .policy-banner.entering {
-    animation: messageIn 0.22s ease both;
+    animation: messageIn var(--duration-base) var(--ease-emphasized) both;
 }
 
 .policy-banner strong {
@@ -1150,6 +1348,11 @@ body.consent-locked .ask-app {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    min-width: 58px;
+    background:
+        linear-gradient(90deg, rgba(255, 255, 255, 0.045), rgba(229, 177, 109, 0.1), rgba(255, 255, 255, 0.045));
+    background-size: 220% 100%;
+    animation: loadingSheen 2.6s var(--ease-standard) infinite;
 }
 
 .dot {
@@ -1157,7 +1360,7 @@ body.consent-locked .ask-app {
     height: 7px;
     border-radius: 50%;
     background: var(--accent-2);
-    animation: dotPulse 1s ease-in-out infinite;
+    animation: dotPulse 1.18s ease-in-out infinite;
 }
 
 .dot:nth-child(2) {
@@ -1191,6 +1394,17 @@ body.consent-locked .ask-app {
     color: var(--text-soft);
     background: rgba(229, 177, 109, 0.09);
     font-size: 0.78rem;
+    animation: chipIn var(--duration-base) var(--ease-emphasized) both;
+    transition:
+        transform var(--duration-base) var(--ease-emphasized),
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard);
+}
+
+.file-chip:hover {
+    transform: translateY(-1px);
+    border-color: rgba(229, 177, 109, 0.42);
+    background: rgba(229, 177, 109, 0.12);
 }
 
 .file-chip.warning {
@@ -1245,6 +1459,16 @@ body.consent-locked .ask-app {
     font-weight: 800;
     cursor: pointer;
     list-style: none;
+    transition:
+        transform var(--duration-base) var(--ease-emphasized),
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard);
+}
+
+.sources-menu summary:hover {
+    transform: translateY(-1px);
+    border-color: var(--line-strong);
+    background: rgba(229, 177, 109, 0.13);
 }
 
 .sources-menu summary::-webkit-details-marker {
@@ -1271,6 +1495,19 @@ body.consent-locked .ask-app {
     background: rgba(255, 255, 255, 0.045);
     font-size: 0.78rem;
     text-decoration: none;
+    animation: chipIn var(--duration-base) var(--ease-emphasized) both;
+    transition:
+        transform var(--duration-base) var(--ease-emphasized),
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard),
+        color var(--duration-base) var(--ease-standard);
+}
+
+.source-links a:hover {
+    transform: translateY(-1px);
+    border-color: rgba(229, 177, 109, 0.32);
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.07);
 }
 
 .source-links img {
@@ -1295,6 +1532,7 @@ body.consent-locked .ask-app {
         linear-gradient(135deg, rgba(84, 45, 20, 0.36), rgba(143, 174, 154, 0.08)),
         rgba(255, 255, 255, 0.045);
     box-shadow: 0 10px 34px rgba(16, 8, 3, 0.18);
+    animation: panelRise var(--duration-slow) var(--ease-emphasized) both;
 }
 
 .activity-panel section + section {
@@ -1361,6 +1599,7 @@ body.consent-locked .ask-app {
     flex: 0 0 auto;
     padding: 14px clamp(14px, 3vw, 28px) 12px;
     background: rgba(23, 15, 11, 0.88);
+    backdrop-filter: blur(12px);
 }
 
 .template-tray {
@@ -1371,6 +1610,7 @@ body.consent-locked .ask-app {
     overflow-x: auto;
     padding-bottom: 2px;
     scrollbar-width: thin;
+    scroll-snap-type: x proximity;
 }
 
 .template-tray span {
@@ -1397,6 +1637,12 @@ body.consent-locked .ask-app {
     cursor: pointer;
     font-size: 0.78rem;
     font-weight: 800;
+    scroll-snap-align: start;
+    transition:
+        transform var(--duration-base) var(--ease-emphasized),
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard),
+        color var(--duration-base) var(--ease-standard);
 }
 
 .template-tray button:hover,
@@ -1404,6 +1650,7 @@ body.consent-locked .ask-app {
     border-color: var(--line-strong);
     color: var(--text);
     background: rgba(229, 177, 109, 0.13);
+    transform: translateY(-1px);
 }
 
 .notebook-embeds {
@@ -1428,6 +1675,24 @@ body.consent-locked .ask-app {
     border-radius: var(--radius);
     background: rgba(255, 255, 255, 0.055);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    transition:
+        transform var(--duration-base) var(--ease-emphasized),
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard),
+        box-shadow var(--duration-base) var(--ease-standard);
+}
+
+.composer:focus-within {
+    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.07);
+    box-shadow:
+        0 0 0 3px rgba(229, 177, 109, 0.13),
+        0 16px 42px rgba(16, 8, 3, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.composer.soft-feedback {
+    animation: softPulse 520ms var(--ease-emphasized) both;
 }
 
 .composer textarea {
@@ -1457,6 +1722,15 @@ body.consent-locked .ask-app {
     color: #fff7ec;
     background: linear-gradient(135deg, var(--accent), var(--accent-strong));
     font-weight: 800;
+    box-shadow: 0 12px 28px rgba(84, 45, 20, 0.24);
+}
+
+.send-btn svg {
+    transition: transform var(--duration-base) var(--ease-emphasized);
+}
+
+.send-btn:hover svg {
+    transform: translateX(2px);
 }
 
 .send-btn:disabled,
@@ -1501,6 +1775,10 @@ body.consent-locked .ask-app {
     background:
         linear-gradient(180deg, rgba(54, 34, 22, 0.94), rgba(22, 14, 10, 0.88)),
         rgba(30, 19, 13, 0.95);
+    animation: notebookSlideIn var(--duration-slow) var(--ease-emphasized) both;
+    transition:
+        opacity var(--duration-base) var(--ease-standard),
+        transform var(--duration-slow) var(--ease-emphasized);
 }
 
 .notebook-head,
@@ -1575,12 +1853,17 @@ body.consent-locked .ask-app {
     background: rgba(255, 255, 255, 0.04);
     text-align: left;
     cursor: pointer;
-    transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+    transition:
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard),
+        color var(--duration-base) var(--ease-standard),
+        transform var(--duration-base) var(--ease-emphasized);
 }
 
 .notebook-files button:hover {
     border-color: rgba(229, 177, 109, 0.3);
     background: rgba(255, 255, 255, 0.06);
+    transform: translateY(-1px);
 }
 
 .notebook-files button.active {
@@ -1632,12 +1915,23 @@ body.consent-locked .ask-app {
     cursor: pointer;
     font-size: 0.8rem;
     font-weight: 800;
+    transition:
+        transform var(--duration-base) var(--ease-emphasized),
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard),
+        color var(--duration-base) var(--ease-standard);
 }
 
 .notebook-tab.active {
     border-color: rgba(229, 177, 109, 0.42);
     color: var(--accent-2);
     background: rgba(229, 177, 109, 0.1);
+}
+
+.notebook-tab:hover {
+    transform: translateY(-1px);
+    border-color: rgba(229, 177, 109, 0.28);
+    color: var(--text);
 }
 
 .notebook-meta {
@@ -1658,6 +1952,7 @@ body.consent-locked .ask-app {
     border: 1px solid var(--line);
     border-radius: var(--radius);
     background: rgba(0, 0, 0, 0.22);
+    animation: panelRise var(--duration-base) var(--ease-emphasized) both;
 }
 
 .notebook-editor {
@@ -1701,6 +1996,17 @@ body.consent-locked .ask-app {
     background: rgba(255, 255, 255, 0.04);
     text-align: left;
     cursor: pointer;
+    transition:
+        transform var(--duration-base) var(--ease-emphasized),
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard),
+        color var(--duration-base) var(--ease-standard);
+}
+
+.notebook-history button:hover {
+    transform: translateY(-1px);
+    border-color: rgba(229, 177, 109, 0.28);
+    background: rgba(255, 255, 255, 0.06);
 }
 
 .notebook-history button.active {
@@ -1733,6 +2039,16 @@ body.consent-locked .ask-app {
     padding: 18px;
     background: rgba(12, 7, 4, 0.68);
     backdrop-filter: blur(10px);
+    animation: backdropIn var(--duration-base) var(--ease-standard) both;
+}
+
+.modal-backdrop.is-closing {
+    pointer-events: none;
+    animation: backdropOut var(--duration-quick) var(--ease-standard) both;
+}
+
+.modal-backdrop.is-closing .auth-modal {
+    animation: modalOut var(--duration-quick) var(--ease-standard) both;
 }
 
 .hidden {
@@ -1745,7 +2061,7 @@ body.consent-locked .ask-app {
     border-radius: var(--radius);
     background: rgba(43, 27, 18, 0.96);
     box-shadow: var(--shadow);
-    animation: modalIn 0.22s ease both;
+    animation: modalIn var(--duration-base) var(--ease-emphasized) both;
 }
 
 .account-window {
@@ -1781,6 +2097,9 @@ body.consent-locked .ask-app {
     border: 1px solid rgba(229, 177, 109, 0.26);
     border-radius: var(--radius);
     background: rgba(229, 177, 109, 0.08);
+    transition:
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard);
 }
 
 .consent-note strong {
@@ -1796,6 +2115,14 @@ body.consent-locked .ask-app {
     border: 1px solid var(--line);
     border-radius: var(--radius);
     background: rgba(255, 255, 255, 0.045);
+    transition:
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard);
+}
+
+.consent-check:focus-within {
+    border-color: var(--line-strong);
+    background: rgba(255, 255, 255, 0.06);
 }
 
 .consent-check input {
@@ -1835,6 +2162,12 @@ body.consent-locked .ask-app {
     border-radius: var(--radius);
     background: rgba(43, 27, 18, 0.98);
     box-shadow: var(--shadow);
+    animation: toastIn var(--duration-slow) var(--ease-emphasized) both;
+}
+
+.cookie-banner.is-closing {
+    pointer-events: none;
+    animation: toastOut var(--duration-quick) var(--ease-standard) both;
 }
 
 .cookie-banner strong,
@@ -1881,6 +2214,7 @@ body.consent-locked .ask-app {
     color: #fff7ec;
     background: var(--accent);
     border-color: transparent;
+    box-shadow: 0 10px 28px rgba(84, 45, 20, 0.28);
 }
 
 .auth-form {
@@ -1905,6 +2239,10 @@ body.consent-locked .ask-app {
     outline: 0;
     color: var(--text);
     background: rgba(255, 255, 255, 0.055);
+    transition:
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard),
+        box-shadow var(--duration-base) var(--ease-standard);
 }
 
 .auth-form input:focus,
@@ -1927,6 +2265,7 @@ body.consent-locked .ask-app {
     color: #fff7ec;
     background: linear-gradient(135deg, var(--accent), var(--accent-strong));
     font-weight: 800;
+    box-shadow: 0 12px 28px rgba(84, 45, 20, 0.24);
 }
 
 .account-body {
@@ -1943,6 +2282,17 @@ body.consent-locked .ask-app {
     border: 1px solid var(--line);
     border-radius: var(--radius);
     background: rgba(255, 255, 255, 0.045);
+    transition:
+        transform var(--duration-base) var(--ease-emphasized),
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard);
+}
+
+.account-card:hover,
+.rate-card:hover {
+    transform: translateY(-1px);
+    border-color: rgba(229, 177, 109, 0.24);
+    background: rgba(255, 255, 255, 0.06);
 }
 
 .account-card strong,
@@ -1974,6 +2324,16 @@ body.consent-locked .ask-app {
     border-radius: var(--radius);
     background: rgba(255, 255, 255, 0.045);
     cursor: pointer;
+    transition:
+        transform var(--duration-base) var(--ease-emphasized),
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard);
+}
+
+.account-toggle:hover {
+    transform: translateY(-1px);
+    border-color: rgba(229, 177, 109, 0.24);
+    background: rgba(255, 255, 255, 0.06);
 }
 
 .account-toggle > span:first-child {
@@ -2057,7 +2417,9 @@ body.consent-locked .ask-app {
     opacity: 0;
     pointer-events: none;
     transform: translateY(12px);
-    transition: opacity 0.18s ease, transform 0.18s ease;
+    transition:
+        opacity var(--duration-base) var(--ease-standard),
+        transform var(--duration-base) var(--ease-emphasized);
 }
 
 .toast.show {
@@ -2067,9 +2429,11 @@ body.consent-locked .ask-app {
 
 @keyframes smokeDrift {
     from {
+        opacity: 0.34;
         transform: translate3d(-2%, -1%, 0) scale(1.02);
     }
     to {
+        opacity: 0.48;
         transform: translate3d(2%, 1%, 0) scale(1.06);
     }
 }
@@ -2077,11 +2441,11 @@ body.consent-locked .ask-app {
 @keyframes messageIn {
     from {
         opacity: 0;
-        transform: translateY(8px);
+        transform: translateY(14px) scale(0.985);
     }
     to {
         opacity: 1;
-        transform: translateY(0);
+        transform: translateY(0) scale(1);
     }
 }
 
@@ -2119,10 +2483,10 @@ body.consent-locked .ask-app {
     }
 }
 
-@keyframes modalIn {
+@keyframes emptyIn {
     from {
         opacity: 0;
-        transform: translateY(8px) scale(0.98);
+        transform: translateY(10px) scale(0.985);
     }
     to {
         opacity: 1;
@@ -2130,14 +2494,158 @@ body.consent-locked .ask-app {
     }
 }
 
-@keyframes menuIn {
+@keyframes chipIn {
     from {
         opacity: 0;
-        transform: translateY(-4px) scale(0.98);
+        transform: translateY(5px) scale(0.98);
     }
     to {
         opacity: 1;
         transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes panelRise {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes notebookSlideIn {
+    from {
+        opacity: 0;
+        transform: translateX(18px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes notebookSheetIn {
+    from {
+        opacity: 0;
+        transform: translateY(18px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes loadingSheen {
+    from {
+        background-position: 140% 0;
+    }
+    to {
+        background-position: -80% 0;
+    }
+}
+
+@keyframes softPulse {
+    0% {
+        border-color: rgba(229, 177, 109, 0.22);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+    40% {
+        border-color: rgba(229, 177, 109, 0.56);
+        box-shadow:
+            0 0 0 4px rgba(229, 177, 109, 0.12),
+            0 16px 42px rgba(16, 8, 3, 0.2),
+            inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+    100% {
+        border-color: rgba(229, 177, 109, 0.22);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+}
+
+@keyframes backdropIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes backdropOut {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0;
+    }
+}
+
+@keyframes modalIn {
+    from {
+        opacity: 0;
+        transform: translateY(16px) scale(0.965);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes modalOut {
+    from {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(8px) scale(0.98);
+    }
+}
+
+@keyframes menuIn {
+    from {
+        opacity: 0;
+        transform: translateY(-8px) scale(0.975);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes menuOut {
+    from {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-4px) scale(0.985);
+    }
+}
+
+@keyframes toastIn {
+    from {
+        opacity: 0;
+        transform: translateY(14px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes toastOut {
+    from {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(10px) scale(0.985);
     }
 }
 
@@ -2166,6 +2674,7 @@ body.consent-locked .ask-app {
     background: rgba(43, 27, 18, 0.92);
     box-shadow: 0 12px 40px rgba(16, 8, 3, 0.28);
     backdrop-filter: blur(16px);
+    animation: panelRise var(--duration-slow) var(--ease-emphasized) both;
 }
 
 .legal-nav > div {
@@ -2179,6 +2688,14 @@ body.consent-locked .ask-app {
     color: var(--accent-2);
     font-weight: 800;
     text-decoration: none;
+    transition:
+        color var(--duration-base) var(--ease-standard),
+        border-color var(--duration-base) var(--ease-standard);
+}
+
+.legal-nav a:not(.brand):hover,
+.legal-card a:hover {
+    color: var(--text);
 }
 
 .legal-hero {
@@ -2214,6 +2731,7 @@ body.consent-locked .ask-app {
         linear-gradient(135deg, rgba(84, 45, 20, 0.24), rgba(143, 174, 154, 0.06)),
         rgba(43, 27, 18, 0.82);
     box-shadow: 0 20px 70px rgba(16, 8, 3, 0.24);
+    animation: panelRise var(--duration-slow) var(--ease-emphasized) both;
 }
 
 .legal-card h2,
@@ -2260,16 +2778,38 @@ body.consent-locked .ask-app {
         border-radius: 0;
     }
 
+    @supports (height: 100dvh) {
+        .ask-app {
+            height: 100dvh;
+        }
+    }
+
+    body.sidebar-collapsed .ask-app {
+        grid-template-columns: 1fr;
+        grid-template-rows: 0 minmax(0, 1fr);
+    }
+
     body.notebook-open .ask-app,
     body.sidebar-collapsed.notebook-open .ask-app {
         grid-template-columns: 1fr;
-        grid-template-rows: auto minmax(0, 1fr) minmax(260px, 42vh);
+        grid-template-rows: auto minmax(0, 1fr) minmax(300px, 50vh);
+    }
+
+    body.sidebar-collapsed.notebook-open .ask-app {
+        grid-template-rows: 0 minmax(0, 1fr) minmax(300px, 50vh);
     }
 
     .chat-sidebar {
         max-height: 220px;
         border-right: 0;
         border-bottom: 1px solid var(--line);
+    }
+
+    body.sidebar-collapsed .chat-sidebar {
+        max-height: 0;
+        opacity: 0;
+        transform: translateY(-12px);
+        border-bottom: 0;
     }
 
     .side-head {
@@ -2285,10 +2825,12 @@ body.consent-locked .ask-app {
         overflow-x: auto;
         overflow-y: hidden;
         padding: 10px 12px;
+        scroll-snap-type: x proximity;
     }
 
     .chat-row {
-        min-width: 220px;
+        min-width: 240px;
+        scroll-snap-align: start;
     }
 
     .chat-topbar {
@@ -2297,11 +2839,37 @@ body.consent-locked .ask-app {
     }
 
     .topbar-inner {
-        align-items: stretch;
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto auto;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .mode-summary {
+        max-width: none;
+    }
+
+    .settings-chip-row {
+        overflow-x: auto;
+        padding-bottom: 1px;
+        scrollbar-width: none;
     }
 
     .settings-button {
         min-width: 44px;
+        padding: 0 11px;
+    }
+
+    .settings-menu {
+        position: fixed;
+        top: 70px;
+        right: 12px;
+        left: 12px;
+        width: auto;
+        max-height: calc(100vh - 92px);
+        max-height: calc(100dvh - 92px);
+        overflow-y: auto;
+        transform-origin: top center;
     }
 
     .select-shell {
@@ -2322,7 +2890,11 @@ body.consent-locked .ask-app {
     }
 
     .message-stack {
-        max-width: 88%;
+        max-width: 92%;
+    }
+
+    .message.assistant .message-stack {
+        max-width: 100%;
     }
 
     .bubble {
@@ -2330,7 +2902,10 @@ body.consent-locked .ask-app {
     }
 
     .composer-zone {
-        padding: 10px 10px 8px;
+        position: sticky;
+        bottom: 0;
+        z-index: 8;
+        padding: 10px 10px max(8px, env(safe-area-inset-bottom));
     }
 
     .template-tray {
@@ -2338,8 +2913,10 @@ body.consent-locked .ask-app {
     }
 
     .notebook-panel {
+        max-height: 50vh;
         border-top: 1px solid var(--line);
         border-left: 0;
+        animation-name: notebookSheetIn;
     }
 
     .notebook-body {
@@ -2360,6 +2937,12 @@ body.consent-locked .ask-app {
         width: 100%;
         min-width: 0;
         max-width: none;
+    }
+
+    .notebook-tabs {
+        overflow-x: auto;
+        padding-bottom: 2px;
+        scrollbar-width: none;
     }
 
     .verify-row {
@@ -2383,6 +2966,110 @@ body.consent-locked .ask-app {
         height: 100vh;
     }
 
+    @supports (height: 100dvh) {
+        .ask-app {
+            height: 100dvh;
+        }
+    }
+
+    body.notebook-open .ask-app,
+    body.sidebar-collapsed.notebook-open .ask-app {
+        grid-template-rows: auto minmax(0, 1fr) minmax(340px, 56vh);
+    }
+
+    body.sidebar-collapsed.notebook-open .ask-app {
+        grid-template-rows: 0 minmax(0, 1fr) minmax(340px, 56vh);
+    }
+
+    .brand span {
+        max-width: 132px;
+    }
+
+    .topbar-inner {
+        grid-template-columns: auto minmax(0, 1fr) auto auto;
+    }
+
+    .settings-button span,
+    .notebook-open-btn span {
+        display: none;
+    }
+
+    .mode-label,
+    .settings-chip-row {
+        display: none;
+    }
+
+    .settings-model-name {
+        font-size: 0.86rem;
+    }
+
+    .settings-menu {
+        top: 60px;
+        right: 8px;
+        left: 8px;
+        max-height: calc(100vh - 76px);
+        max-height: calc(100dvh - 76px);
+        padding: 10px;
+    }
+
+    .chat-sidebar {
+        max-height: 205px;
+    }
+
+    .chat-search-wrap {
+        margin: 8px 10px 0;
+    }
+
+    .chat-list {
+        padding: 9px 10px;
+    }
+
+    .chat-row {
+        min-width: 226px;
+    }
+
+    .chat-actions {
+        max-width: 136px;
+        gap: 4px;
+    }
+
+    .chat-actions button {
+        width: 26px;
+        height: 26px;
+    }
+
+    .chat-row.has-actions .chat-item-main,
+    .chat-row.has-actions:hover .chat-item-main,
+    .chat-row.has-actions:focus-within .chat-item-main {
+        padding-right: 138px;
+    }
+
+    .message-scroll {
+        padding: 14px 10px;
+    }
+
+    .messages {
+        gap: 12px;
+    }
+
+    .message-stack,
+    .message.assistant .message-stack {
+        max-width: 100%;
+    }
+
+    .message.user .message-stack {
+        max-width: 92%;
+    }
+
+    .bubble {
+        padding: 11px 12px;
+        font-size: 0.94rem;
+    }
+
+    .activity-panel {
+        width: 100%;
+    }
+
     .cookie-banner {
         right: 10px;
         bottom: 10px;
@@ -2396,6 +3083,24 @@ body.consent-locked .ask-app {
 
     .composer {
         grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 7px;
+        padding: 7px;
+    }
+
+    .composer textarea,
+    .auth-form input,
+    .password-form input,
+    .chat-search-wrap input {
+        font-size: 16px;
+    }
+
+    .template-tray {
+        gap: 6px;
+    }
+
+    .template-tray button {
+        min-height: 34px;
+        padding: 0 11px;
     }
 
     .notebook-body {
@@ -2409,10 +3114,25 @@ body.consent-locked .ask-app {
         overflow-y: hidden;
         border-right: 0;
         border-bottom: 1px solid var(--line);
+        scroll-snap-type: x proximity;
     }
 
     .notebook-files button {
         min-width: 170px;
+        scroll-snap-align: start;
+    }
+
+    .notebook-toolbar {
+        align-items: stretch;
+    }
+
+    .notebook-scope {
+        flex-basis: 100%;
+        margin-left: 0;
+    }
+
+    .notebook-workspace {
+        padding: 10px;
     }
 
     .send-btn {
@@ -2422,5 +3142,18 @@ body.consent-locked .ask-app {
 
     .send-btn span {
         display: none;
+    }
+
+    .legal-shell {
+        width: min(100%, calc(100vw - 20px));
+        margin-top: 10px;
+    }
+
+    .legal-hero {
+        padding: 34px 0 20px;
+    }
+
+    .legal-card {
+        padding: 16px;
     }
 }

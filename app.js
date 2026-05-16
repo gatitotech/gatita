@@ -138,6 +138,7 @@ const state = {
     user: null,
     pendingFiles: [],
     turnstileToken: '',
+    turnstileVerifiedUntil: 0,
     authTurnstileToken: '',
     turnstileWidgetId: null,
     authTurnstileWidgetId: null,
@@ -148,6 +149,37 @@ const state = {
     openCustomSelect: '',
     activeStreams: new Map(),
     busy: false
+};
+
+const prefersReducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+
+const showWithMotion = (element) => {
+    if (!element) return;
+    window.clearTimeout(element._motionHideTimer);
+    element.classList.remove('hidden', 'is-closing');
+};
+
+const hideWithMotion = (element, { duration = 190 } = {}) => {
+    if (!element || element.classList.contains('hidden')) return;
+    window.clearTimeout(element._motionHideTimer);
+    if (prefersReducedMotion()) {
+        element.classList.add('hidden');
+        element.classList.remove('is-closing');
+        return;
+    }
+    element.classList.add('is-closing');
+    element._motionHideTimer = window.setTimeout(() => {
+        element.classList.add('hidden');
+        element.classList.remove('is-closing');
+    }, duration);
+};
+
+const pulseElement = (element, className = 'soft-feedback') => {
+    if (!element || prefersReducedMotion()) return;
+    element.classList.remove(className);
+    void element.offsetWidth;
+    element.classList.add(className);
+    window.setTimeout(() => element.classList.remove(className), 560);
 };
 
 const chatStreamKey = (chatId) => `chat:${Number(chatId)}`;
@@ -189,6 +221,7 @@ const renderStreamTarget = (target) => {
 const refreshBusyState = () => {
     state.busy = state.activeStreams.size > 0;
     els.messages?.classList.toggle('streaming-render', isCurrentViewStreaming());
+    els.messageScroll?.classList.toggle('streaming-scroll', isCurrentViewStreaming());
     els.sendButton.disabled = state.busy;
 };
 
@@ -217,20 +250,29 @@ const isNearMessageBottom = (threshold = 160) => {
     return distanceFromBottom < threshold;
 };
 
-const scrollMessagesToBottomNow = () => {
+const scrollMessagesToBottomNow = ({ smooth = false } = {}) => {
     if (!els.messageScroll) return;
-    els.messageScroll.scrollTop = Math.max(0, els.messageScroll.scrollHeight - els.messageScroll.clientHeight);
+    const top = Math.max(0, els.messageScroll.scrollHeight - els.messageScroll.clientHeight);
+    const canSmooth = smooth
+        && !state.busy
+        && !prefersReducedMotion()
+        && typeof els.messageScroll.scrollTo === 'function';
+    if (canSmooth) {
+        els.messageScroll.scrollTo({ top, behavior: 'smooth' });
+        return;
+    }
+    els.messageScroll.scrollTop = top;
 };
 
-const queueBottomLock = () => {
+const queueBottomLock = ({ smooth = false } = {}) => {
     if (queueBottomLock.frame) cancelAnimationFrame(queueBottomLock.frame);
     if (queueBottomLock.secondFrame) cancelAnimationFrame(queueBottomLock.secondFrame);
 
-    scrollMessagesToBottomNow();
+    scrollMessagesToBottomNow({ smooth });
     queueBottomLock.frame = requestAnimationFrame(() => {
-        scrollMessagesToBottomNow();
+        scrollMessagesToBottomNow({ smooth });
         queueBottomLock.secondFrame = requestAnimationFrame(() => {
-            scrollMessagesToBottomNow();
+            scrollMessagesToBottomNow({ smooth });
             queueBottomLock.frame = null;
             queueBottomLock.secondFrame = null;
         });
@@ -288,7 +330,7 @@ const acceptRequiredLegal = () => {
     storageSet('legal_accept_version', LEGAL_VERSION);
     storageSet('required_cookies_version', LEGAL_VERSION);
     setRequiredCookieAck();
-    els.legalGateModal.classList.add('hidden');
+    hideWithMotion(els.legalGateModal);
     unlockConsent();
     initializeApp().catch((error) => {
         showToast(error.message || 'Ask could not load.');
@@ -299,7 +341,7 @@ const acceptRequiredLegal = () => {
 
 const showCookieBannerIfNeeded = () => {
     if (hasCookieAcknowledgement()) return;
-    els.cookieBanner.classList.remove('hidden');
+    showWithMotion(els.cookieBanner);
 };
 
 const iconRefresh = () => {
@@ -334,7 +376,7 @@ const queueMathTypeset = () => {
         await loadMathJax();
         window.MathJax.typesetPromise([els.messages])
             .then(() => {
-                if (shouldStickToBottom) queueBottomLock();
+                if (shouldStickToBottom) queueBottomLock({ smooth: true });
             })
             .catch(() => {});
     }, 160);
@@ -401,7 +443,7 @@ const shouldPromptNotifications = () => {
 
 const closeNotificationPrompt = ({ remember = true } = {}) => {
     if (remember) markNotificationPrompted();
-    els.notificationPromptModal?.classList.add('hidden');
+    hideWithMotion(els.notificationPromptModal);
     updateNotificationUi();
 };
 
@@ -418,7 +460,7 @@ const showNotificationPrompt = ({ force = false } = {}) => {
     if (!force && !shouldPromptNotifications()) return false;
 
     markNotificationPrompted();
-    els.notificationPromptModal?.classList.remove('hidden');
+    showWithMotion(els.notificationPromptModal);
     iconRefresh();
     return true;
 };
@@ -1408,6 +1450,7 @@ const renderMessages = () => {
     const shouldStickToBottom = viewStreaming || isNearMessageBottom();
     els.emptyState.classList.toggle('hidden', state.messages.length > 0);
     els.messages.classList.toggle('streaming-render', viewStreaming);
+    els.messageScroll.classList.toggle('streaming-scroll', viewStreaming);
     els.messages.innerHTML = state.messages.map((message, index) => {
         const renderKey = getMessageRenderKey(message, index);
         const entering = !renderMessages.seenKeys?.has(renderKey);
@@ -1468,7 +1511,7 @@ const renderMessages = () => {
             </article>
         `;
     }).join('');
-    if (shouldStickToBottom) queueBottomLock();
+    if (shouldStickToBottom) queueBottomLock({ smooth: !viewStreaming });
     requestAnimationFrame(() => {
         if (!viewStreaming) {
             highlightCodeBlocks(els.messages);
@@ -1584,6 +1627,18 @@ const resetTurnstile = (kind = 'message') => {
         state.authTurnstileToken = '';
         window.turnstile.reset(state.authTurnstileWidgetId);
     }
+};
+
+const hasRecentTurnstilePass = () => Date.now() < Number(state.turnstileVerifiedUntil || 0);
+
+const rememberTurnstilePass = () => {
+    const ttl = Math.max(0, Number(state.config?.turnstilePassTtlMs || 0));
+    if (!ttl) return;
+    state.turnstileVerifiedUntil = Date.now() + Math.max(0, ttl - 15000);
+};
+
+const forgetTurnstilePass = () => {
+    state.turnstileVerifiedUntil = 0;
 };
 
 const readFilePayload = (file) => new Promise((resolve, reject) => {
@@ -1862,7 +1917,7 @@ const sendMessage = async (options = {}) => {
     const isRegenerate = Boolean(options.regenerateMessageId);
     const isResend = Boolean(options.resendMessageId);
     if (!text && state.pendingFiles.length === 0 && !isRegenerate) return;
-    if (state.config?.turnstileRequired && !state.turnstileToken) {
+    if (state.config?.turnstileRequired && !state.turnstileToken && !hasRecentTurnstilePass()) {
         showToast('Complete verification first.');
         return;
     }
@@ -2068,6 +2123,7 @@ const sendMessage = async (options = {}) => {
         setMessagesForStreamTarget(streamTarget, messageList);
 
         updateUsage(donePayload?.usage);
+        rememberTurnstilePass();
         resetTurnstile('message');
         if (isTemporary) {
             state.temporaryMessages = messageList;
@@ -2086,6 +2142,7 @@ const sendMessage = async (options = {}) => {
         const nextMessages = (stream?.messages || state.messages).filter((message) => !message.loading && !message.streaming);
         setMessagesForStreamTarget(target, nextMessages);
         resetTurnstile('message');
+        if (error.status === 403 || error.status === 503) forgetTurnstilePass();
         if (error.data?.usage) updateUsage(error.data.usage);
         showToast(error.message || 'Ask could not respond.');
     } finally {
@@ -2101,22 +2158,22 @@ const sendMessage = async (options = {}) => {
 };
 
 const openAuthModal = () => {
-    els.authModal.classList.remove('hidden');
+    showWithMotion(els.authModal);
     els.authEmail.focus();
 };
 
 const closeAuthModal = () => {
-    els.authModal.classList.add('hidden');
+    hideWithMotion(els.authModal);
     els.authError.textContent = '';
 };
 
 const openAccountModal = () => {
     renderAccountWindow();
-    els.accountModal.classList.remove('hidden');
+    showWithMotion(els.accountModal);
 };
 
 const closeAccountModal = () => {
-    els.accountModal.classList.add('hidden');
+    hideWithMotion(els.accountModal);
 };
 
 const toggleSidebar = () => {
@@ -2253,6 +2310,7 @@ els.templateTray.addEventListener('click', (event) => {
     els.messageInput.value = template;
     autoGrowInput();
     els.messageInput.focus();
+    pulseElement(els.composer);
 });
 
 els.attachButton.addEventListener('click', () => els.fileInput.click());
@@ -2274,6 +2332,7 @@ els.fileInput.addEventListener('change', () => {
     state.pendingFiles = [...state.pendingFiles, ...accepted].slice(0, limit);
     els.fileInput.value = '';
     renderAttachments();
+    if (accepted.length) pulseElement(els.composer);
 });
 
 els.chatSearchInput.addEventListener('input', () => {
@@ -2399,8 +2458,12 @@ els.deepResearchToggle.addEventListener('change', () => {
 });
 
 els.settingsButton.addEventListener('click', () => {
-    const willOpen = els.settingsMenu.classList.contains('hidden');
-    els.settingsMenu.classList.toggle('hidden', !willOpen);
+    const willOpen = els.settingsMenu.classList.contains('hidden') || els.settingsMenu.classList.contains('is-closing');
+    if (willOpen) {
+        showWithMotion(els.settingsMenu);
+    } else {
+        hideWithMotion(els.settingsMenu);
+    }
     els.settingsButton.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
     if (!willOpen) closeCustomSelects();
 });
@@ -2487,9 +2550,9 @@ els.notebookHistory.addEventListener('click', (event) => {
 document.addEventListener('click', (event) => {
     const target = event.target;
     if (!target.closest?.('.custom-select-shell')) closeCustomSelects();
-    if (!els.settingsMenu || els.settingsMenu.classList.contains('hidden')) return;
+    if (!els.settingsMenu || els.settingsMenu.classList.contains('hidden') || els.settingsMenu.classList.contains('is-closing')) return;
     if (els.settingsMenu.contains(target) || els.settingsButton.contains(target)) return;
-    els.settingsMenu.classList.add('hidden');
+    hideWithMotion(els.settingsMenu);
     els.settingsButton.setAttribute('aria-expanded', 'false');
     closeCustomSelects();
 });
@@ -2524,7 +2587,7 @@ document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
     closeCustomSelects();
     if (!els.settingsMenu.classList.contains('hidden')) {
-        els.settingsMenu.classList.add('hidden');
+        hideWithMotion(els.settingsMenu);
         els.settingsButton.setAttribute('aria-expanded', 'false');
     }
     if (!els.notificationPromptModal.classList.contains('hidden')) closeNotificationPrompt();
@@ -2651,12 +2714,12 @@ els.legalAcceptButton.addEventListener('click', () => {
 els.cookieAcceptButton.addEventListener('click', () => {
     storageSet('required_cookies_version', LEGAL_VERSION);
     setRequiredCookieAck();
-    els.cookieBanner.classList.add('hidden');
+    hideWithMotion(els.cookieBanner);
 });
 
 const showLegalGate = () => {
     lockForConsent();
-    els.legalGateModal.classList.remove('hidden');
+    showWithMotion(els.legalGateModal);
     els.legalAcceptButton.disabled = !els.legalAcceptCheckbox.checked;
     iconRefresh();
 };
