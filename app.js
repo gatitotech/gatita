@@ -182,6 +182,12 @@ const pulseElement = (element, className = 'soft-feedback') => {
     window.setTimeout(() => element.classList.remove(className), 560);
 };
 
+const eventIncludesElement = (event, element) => {
+    if (!element) return false;
+    const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
+    return path.includes(element) || element.contains(event.target);
+};
+
 const chatStreamKey = (chatId) => `chat:${Number(chatId)}`;
 const temporaryStreamKey = () => 'temporary';
 
@@ -2457,7 +2463,8 @@ els.deepResearchToggle.addEventListener('change', () => {
     updateSettingsSummary();
 });
 
-els.settingsButton.addEventListener('click', () => {
+els.settingsButton.addEventListener('click', (event) => {
+    event.stopPropagation();
     const willOpen = els.settingsMenu.classList.contains('hidden') || els.settingsMenu.classList.contains('is-closing');
     if (willOpen) {
         showWithMotion(els.settingsMenu);
@@ -2466,6 +2473,16 @@ els.settingsButton.addEventListener('click', () => {
     }
     els.settingsButton.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
     if (!willOpen) closeCustomSelects();
+});
+
+els.settingsMenu.addEventListener('pointerdown', (event) => {
+    event.stopPropagation();
+});
+
+els.settingsMenu.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!target.closest?.('.custom-select-shell')) closeCustomSelects();
+    event.stopPropagation();
 });
 
 els.sidebarToggleButton.addEventListener('click', toggleSidebar);
@@ -2551,7 +2568,7 @@ document.addEventListener('click', (event) => {
     const target = event.target;
     if (!target.closest?.('.custom-select-shell')) closeCustomSelects();
     if (!els.settingsMenu || els.settingsMenu.classList.contains('hidden') || els.settingsMenu.classList.contains('is-closing')) return;
-    if (els.settingsMenu.contains(target) || els.settingsButton.contains(target)) return;
+    if (eventIncludesElement(event, els.settingsMenu) || eventIncludesElement(event, els.settingsButton)) return;
     hideWithMotion(els.settingsMenu);
     els.settingsButton.setAttribute('aria-expanded', 'false');
     closeCustomSelects();
