@@ -623,13 +623,24 @@ body.consent-locked .ask-app {
     flex-direction: column;
     gap: 16px;
     min-height: 100%;
+    overflow-anchor: none;
+}
+
+.scroll-sentinel {
+    width: 1px;
+    height: 1px;
+    overflow-anchor: auto;
 }
 
 .message {
     display: flex;
     width: 100%;
+    overflow-anchor: none;
     content-visibility: auto;
     contain-intrinsic-size: auto 96px;
+}
+
+.message.entering {
     animation: messageIn 0.26s ease both;
 }
 
@@ -881,6 +892,9 @@ body.consent-locked .ask-app {
     border-radius: var(--radius);
     background: rgba(255, 70, 98, 0.11);
     color: #ffdce2;
+}
+
+.policy-banner.entering {
     animation: messageIn 0.22s ease both;
 }
 

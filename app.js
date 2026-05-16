@@ -3,6 +3,19 @@ const STORAGE_PREFIX = 'gatita_ask_';
 const LEGACY_STORAGE_PREFIX = ['cl4', 'nkr_ask_'].join('');
 const API_BASE = window.GATITA_ASK_API_BASE || window[LEGACY_API_BASE_KEY] || 'https://api.clankr.tech/ask-api';
 const LEGAL_VERSION = '2026-05-15';
+const STREAM_RENDER_INTERVAL_MS = 40;
+const NOTEBOOK_BLOCK_RE = /<gatita-notebook\b([^>]*)>([\s\S]*?)<\/gatita-notebook>/gi;
+const NOTEBOOK_PARTIAL_RE = /<gatita-notebook\b[\s\S]*$/i;
+const PROMPT_TEMPLATES = {
+    coding: 'Debug this code and explain the fix clearly. I will paste the code below:\\n\\n```\\n// paste code here\\n```',
+    'coding-notebook': 'Create a small starter project in a notebook file. Use one clear file and explain what it does. Topic: a simple todo app.',
+    school: 'Make me a study guide for this topic with key terms, examples, and a quick self-quiz: ',
+    'school-essay': 'Help me outline a strong essay in a notebook. Topic: [topic]. Include thesis options, structure, evidence ideas, and a first draft section.',
+    writing: 'Rewrite this to be clearer, more natural, and more polished while keeping my meaning:\\n\\n',
+    'writing-story': 'Give me three story openings with different tones, then put the best one into a notebook for editing. Genre: ',
+    research: 'Make a concise research brief with current context, important facts, and open questions. Topic: ',
+    'research-compare': 'Compare two sides of this topic fairly, list what evidence would settle the disagreement, and suggest reliable sources to check: '
+};
 
 const storageGet = (key) => localStorage.getItem(`${STORAGE_PREFIX}${key}`)
     ?? localStorage.getItem(`${LEGACY_STORAGE_PREFIX}${key}`)
@@ -32,6 +45,7 @@ const els = {
     messages: document.getElementById('messages'),
     emptyState: document.getElementById('emptyState'),
     messageScroll: document.getElementById('messageScroll'),
+    scrollSentinel: document.getElementById('scrollSentinel'),
     composer: document.getElementById('composer'),
     messageInput: document.getElementById('messageInput'),
     fileInput: document.getElementById('fileInput'),
@@ -48,7 +62,9 @@ const els = {
     thinkingToggle: document.getElementById('thinkingToggle'),
     researchToggle: document.getElementById('researchToggle'),
     autoWebToggle: document.getElementById('autoWebToggle'),
+    temporaryToggle: document.getElementById('temporaryToggle'),
     deepResearchToggle: document.getElementById('deepResearchToggle'),
+    notebookToggleButton: document.getElementById('notebookToggleButton'),
     usageText: document.getElementById('usageText'),
     accountName: document.getElementById('accountName'),
     accountButton: document.getElementById('accountButton'),
@@ -77,7 +93,18 @@ const els = {
     authError: document.getElementById('authError'),
     toast: document.getElementById('toast'),
     turnstileBox: document.getElementById('turnstileBox'),
-    authTurnstileBox: document.getElementById('authTurnstileBox')
+    authTurnstileBox: document.getElementById('authTurnstileBox'),
+    templateTray: document.getElementById('templateTray'),
+    notebookPanel: document.getElementById('notebookPanel'),
+    closeNotebookButton: document.getElementById('closeNotebookButton'),
+    notebookPanelTitle: document.getElementById('notebookPanelTitle'),
+    notebookFileList: document.getElementById('notebookFileList'),
+    notebookEditor: document.getElementById('notebookEditor'),
+    notebookMeta: document.getElementById('notebookMeta'),
+    notebookHistory: document.getElementById('notebookHistory'),
+    notebookDiff: document.getElementById('notebookDiff'),
+    newNotebookFileButton: document.getElementById('newNotebookFileButton'),
+    saveNotebookButton: document.getElementById('saveNotebookButton')
 };
 
 const state = {
@@ -87,6 +114,8 @@ const state = {
     messages: [],
     activeChatId: null,
     activeSharedToken: '',
+    temporaryMode: false,
+    temporaryMessages: [],
     chatSearch: '',
     editingMessageId: null,
     authToken: storageGet('token'),
@@ -98,7 +127,67 @@ const state = {
     turnstileWidgetId: null,
     authTurnstileWidgetId: null,
     authMode: 'login',
+    notebook: null,
+    notebookOpen: false,
     busy: false
+};
+
+let nextMessageClientKey = 1;
+
+const getMessageRenderKey = (message, index) => {
+    if (message._clientKey) return message._clientKey;
+    if (message.id) return `${message.role || message.type || 'message'}:${message.id}`;
+    if (!message._clientKey) {
+        message._clientKey = `client:${nextMessageClientKey}:${index}`;
+        nextMessageClientKey += 1;
+    }
+    return message._clientKey;
+};
+
+const isNearMessageBottom = (threshold = 160) => {
+    if (!els.messageScroll) return true;
+    const distanceFromBottom = els.messageScroll.scrollHeight
+        - els.messageScroll.scrollTop
+        - els.messageScroll.clientHeight;
+    return distanceFromBottom < threshold;
+};
+
+const scrollMessagesToBottomNow = () => {
+    if (!els.messageScroll) return;
+    els.messageScroll.scrollTop = Math.max(0, els.messageScroll.scrollHeight - els.messageScroll.clientHeight);
+};
+
+const queueBottomLock = () => {
+    if (queueBottomLock.frame) cancelAnimationFrame(queueBottomLock.frame);
+    if (queueBottomLock.secondFrame) cancelAnimationFrame(queueBottomLock.secondFrame);
+
+    scrollMessagesToBottomNow();
+    queueBottomLock.frame = requestAnimationFrame(() => {
+        scrollMessagesToBottomNow();
+        queueBottomLock.secondFrame = requestAnimationFrame(() => {
+            scrollMessagesToBottomNow();
+            queueBottomLock.frame = null;
+            queueBottomLock.secondFrame = null;
+        });
+    });
+};
+
+const getMessageElement = (message) => {
+    if (message._messageEl?.isConnected) return message._messageEl;
+    const renderKey = getMessageRenderKey(message, 0);
+    message._messageEl = Array.from(els.messages.querySelectorAll('[data-render-key]'))
+        .find((element) => element.dataset.renderKey === renderKey) || null;
+    return message._messageEl;
+};
+
+const updateStreamingMessageContent = (message) => {
+    const messageElement = getMessageElement(message);
+    const streamBody = messageElement?.querySelector('.stream-plain');
+    if (!streamBody) return false;
+
+    streamBody.textContent = getVisibleMessageContent(message);
+    if (state.busy || isNearMessageBottom()) queueBottomLock();
+    return true;
 };
 
 const makeGuestId = () => {
@@ -171,13 +260,18 @@ const queueMathTypeset = () => {
     if (state.busy) return;
     const hasMath = state.messages.some((message) => (
         message.role === 'assistant'
-        && /(\$\$|\\\(|\\\[|\$[^$\n]{1,160}\$)/.test(message.content || '')
+        && /(\$\$|\\\(|\\\[|\$[^$\n]{1,160}\$)/.test(getVisibleMessageContent(message))
     ));
     if (!hasMath) return;
+    const shouldStickToBottom = isNearMessageBottom(220);
     clearTimeout(queueMathTypeset.timer);
     queueMathTypeset.timer = setTimeout(async () => {
         await loadMathJax();
-        window.MathJax.typesetPromise([els.messages]).catch(() => {});
+        window.MathJax.typesetPromise([els.messages])
+            .then(() => {
+                if (shouldStickToBottom) queueBottomLock();
+            })
+            .catch(() => {});
     }, 160);
 };
 
@@ -352,6 +446,7 @@ const renderSelects = () => {
     els.thinkingToggle.checked = savedThinking;
     els.researchToggle.checked = savedResearch && Boolean(state.user);
     els.autoWebToggle.checked = savedAutoWeb;
+    els.temporaryToggle.checked = state.temporaryMode;
     els.deepResearchToggle.checked = savedDeepResearch && Boolean(state.user);
     updateSettingsSummary();
 };
@@ -363,7 +458,8 @@ const updateSettingsSummary = () => {
     const extras = [
         els.thinkingToggle.checked ? 'Thinking' : '',
         els.autoWebToggle.checked ? 'Auto web' : '',
-        els.deepResearchToggle.checked ? 'Deep research' : (els.researchToggle.checked ? 'Research' : '')
+        els.deepResearchToggle.checked ? 'Deep research' : (els.researchToggle.checked ? 'Research' : ''),
+        state.temporaryMode ? 'Temporary' : ''
     ].filter(Boolean);
     els.settingsSummary.textContent = [modelName, personalityName, ...extras].join(' · ');
 };
@@ -376,8 +472,20 @@ const renderChats = () => {
         groups.get(key).push(chat);
     }
 
+    const temporaryItem = `
+        <article class="chat-row ${state.temporaryMode ? 'active' : ''}">
+            <button class="chat-item-main" type="button" data-temporary-chat="1">
+                <span>
+                    <span class="chat-title">Temporary chat</span>
+                    <span class="chat-preview">Not saved</span>
+                </span>
+                <span class="chat-count">${state.temporaryMessages.length || 0}</span>
+            </button>
+        </article>
+    `;
+
     const newItem = `
-        <article class="chat-row ${!state.activeChatId && !state.activeSharedToken ? 'active' : ''}">
+        <article class="chat-row ${!state.activeChatId && !state.activeSharedToken && !state.temporaryMode ? 'active' : ''}">
             <button class="chat-item-main" type="button" data-new-chat="1">
                 <span>
                     <span class="chat-title">New chat</span>
@@ -412,7 +520,7 @@ const renderChats = () => {
         </section>
     `).join('');
 
-    els.chatList.innerHTML = `${newItem}${groupHtml || '<p class="empty-list">No saved chats found.</p>'}`;
+    els.chatList.innerHTML = `${temporaryItem}${newItem}${groupHtml || '<p class="empty-list">No saved chats found.</p>'}`;
     iconRefresh();
 };
 
@@ -422,6 +530,274 @@ const escapeHtml = (value) => String(value || '')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+
+const parseNotebookAttributes = (value) => {
+    const attrs = {};
+    String(value || '').replace(/([\w-]+)\s*=\s*(["'])(.*?)\2/g, (match, key, quote, raw) => {
+        attrs[key.toLowerCase()] = raw;
+        return match;
+    });
+    return attrs;
+};
+
+const normalizeNotebookPath = (value, fallback = 'note.md') => {
+    const cleaned = String(value || fallback)
+        .replace(/\\/g, '/')
+        .replace(/\.\./g, '')
+        .replace(/[<>:"|?*\u0000-\u001f]/g, '')
+        .replace(/\/+/g, '/')
+        .replace(/^\/+/, '')
+        .trim()
+        .slice(0, 160);
+    return cleaned || fallback;
+};
+
+const parseNotebookActionsFromText = (value) => {
+    const actions = [];
+    String(value || '').replace(NOTEBOOK_BLOCK_RE, (match, attrText, content) => {
+        const attrs = parseNotebookAttributes(attrText);
+        const path = normalizeNotebookPath(attrs.path || attrs.name || attrs.title || 'note.md');
+        actions.push({
+            action: ['upsert', 'edit', 'create'].includes(String(attrs.action || '').toLowerCase())
+                ? String(attrs.action || 'upsert').toLowerCase()
+                : 'upsert',
+            path,
+            title: String(attrs.title || path.split('/').pop() || 'Notebook item').slice(0, 100),
+            language: String(attrs.language || attrs.lang || '').slice(0, 40),
+            kind: String(attrs.kind || attrs.type || 'note').slice(0, 40),
+            content: String(content || '').replace(/^\n+|\n+$/g, '').slice(0, 100000)
+        });
+        return '';
+    });
+    return actions.slice(0, 6);
+};
+
+const stripNotebookBlocks = (value) => String(value || '')
+    .replace(NOTEBOOK_BLOCK_RE, '')
+    .replace(NOTEBOOK_PARTIAL_RE, '')
+    .trim();
+
+const getNotebookActions = (message) => {
+    const noticeActions = message?.notice?.notebookActions;
+    if (Array.isArray(noticeActions) && noticeActions.length > 0) return noticeActions;
+    return parseNotebookActionsFromText(message?.content || '');
+};
+
+const getVisibleMessageContent = (message) => stripNotebookBlocks(message?.content || '');
+
+const emptyNotebook = () => ({
+    files: [],
+    activeFileId: '',
+    activeTab: 'editor',
+    selectedVersionId: ''
+});
+
+const loadNotebook = () => {
+    try {
+        const parsed = JSON.parse(storageGet('notebook') || '');
+        if (parsed && Array.isArray(parsed.files)) {
+            return {
+                ...emptyNotebook(),
+                ...parsed,
+                files: parsed.files.map((file) => ({
+                    id: file.id || crypto.randomUUID?.() || `file-${Date.now()}-${Math.random()}`,
+                    path: normalizeNotebookPath(file.path || file.title || 'note.md'),
+                    title: String(file.title || file.path || 'Notebook item').slice(0, 100),
+                    language: String(file.language || '').slice(0, 40),
+                    kind: String(file.kind || 'note').slice(0, 40),
+                    content: String(file.content || ''),
+                    updatedAt: Number(file.updatedAt || Date.now()),
+                    versions: Array.isArray(file.versions) ? file.versions.slice(-30) : []
+                }))
+            };
+        }
+    } catch (_) {}
+    return emptyNotebook();
+};
+
+const saveNotebook = () => {
+    storageSet('notebook', JSON.stringify(state.notebook || emptyNotebook()));
+};
+
+const getActiveNotebookFile = () => {
+    if (!state.notebook) return null;
+    return state.notebook.files.find((file) => file.id === state.notebook.activeFileId) || state.notebook.files[0] || null;
+};
+
+const notebookFileIcon = (file) => {
+    const lower = String(file?.path || '').toLowerCase();
+    if (/\.(js|jsx|ts|tsx|py|java|go|rs|rb|php|css|html)$/i.test(lower)) return 'file-code-2';
+    if (/\.(md|txt|doc|docx)$/i.test(lower)) return 'file-text';
+    return 'file';
+};
+
+const createNotebookVersion = ({ file, content, sourceKey = 'manual' }) => ({
+    id: crypto.randomUUID?.() || `version-${Date.now()}-${Math.random()}`,
+    createdAt: Date.now(),
+    sourceKey,
+    content: String(content || ''),
+    previousContent: String(file?.content || '')
+});
+
+const upsertNotebookFile = (action, sourceKey = 'manual') => {
+    state.notebook = state.notebook || emptyNotebook();
+    const path = normalizeNotebookPath(action.path || action.title || 'note.md');
+    let file = state.notebook.files.find((item) => item.path.toLowerCase() === path.toLowerCase());
+    if (!file) {
+        file = {
+            id: crypto.randomUUID?.() || `file-${Date.now()}-${Math.random()}`,
+            path,
+            title: String(action.title || path.split('/').pop() || 'Notebook item').slice(0, 100),
+            language: String(action.language || '').slice(0, 40),
+            kind: String(action.kind || 'note').slice(0, 40),
+            content: '',
+            updatedAt: Date.now(),
+            versions: []
+        };
+        state.notebook.files.push(file);
+    }
+
+    if (file.versions.some((version) => version.sourceKey === sourceKey) && sourceKey !== 'manual') {
+        return file;
+    }
+
+    const nextContent = String(action.content || '');
+    if (nextContent !== file.content || sourceKey !== 'manual') {
+        file.versions.push(createNotebookVersion({ file, content: nextContent, sourceKey }));
+        file.versions = file.versions.slice(-30);
+        file.content = nextContent;
+        file.updatedAt = Date.now();
+    }
+    file.title = String(action.title || file.title || path.split('/').pop() || 'Notebook item').slice(0, 100);
+    file.language = String(action.language || file.language || '').slice(0, 40);
+    file.kind = String(action.kind || file.kind || 'note').slice(0, 40);
+    state.notebook.activeFileId = file.id;
+    return file;
+};
+
+const renderNotebookEmbeds = (message) => {
+    const actions = getNotebookActions(message);
+    if (!actions.length) return '';
+    return `
+        <div class="notebook-embeds">
+            ${actions.map((action) => `
+                <button type="button" data-open-notebook-path="${escapeHtml(normalizeNotebookPath(action.path || action.title || 'note.md'))}">
+                    <i data-lucide="notebook-tabs"></i>
+                    <span>${escapeHtml(action.title || action.path || 'Notebook')}</span>
+                </button>
+            `).join('')}
+        </div>
+    `;
+};
+
+const processNotebookActionsForMessage = (message) => {
+    const actions = getNotebookActions(message);
+    if (!actions.length) return;
+    const sourceKey = message.id ? `message:${message.id}` : (message._clientKey || getMessageRenderKey(message, 0));
+    if (message._notebookSourceKey === sourceKey) return;
+    message._notebookSourceKey = sourceKey;
+    actions.forEach((action, index) => upsertNotebookFile(action, `${sourceKey}:${index}`));
+    saveNotebook();
+    renderNotebookPanel();
+};
+
+const processNotebookActionsForMessages = () => {
+    state.messages
+        .filter((message) => message.role === 'assistant')
+        .forEach(processNotebookActionsForMessage);
+};
+
+const formatNotebookTime = (value) => new Date(Number(value || Date.now())).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+});
+
+const buildSimpleDiff = (oldText = '', newText = '') => {
+    const oldLines = String(oldText).split('\n');
+    const newLines = String(newText).split('\n');
+    const max = Math.max(oldLines.length, newLines.length);
+    const rows = [];
+    for (let index = 0; index < max; index += 1) {
+        const left = oldLines[index];
+        const right = newLines[index];
+        if (left === right) {
+            rows.push(`  ${left || ''}`);
+        } else {
+            if (left !== undefined) rows.push(`- ${left}`);
+            if (right !== undefined) rows.push(`+ ${right}`);
+        }
+    }
+    return rows.join('\n') || 'No differences.';
+};
+
+const renderNotebookPanel = () => {
+    if (!state.notebook) state.notebook = loadNotebook();
+    const file = getActiveNotebookFile();
+    if (file && state.notebook.activeFileId !== file.id) state.notebook.activeFileId = file.id;
+    const files = [...state.notebook.files].sort((a, b) => a.path.localeCompare(b.path));
+
+    els.notebookPanel.classList.toggle('hidden', !state.notebookOpen);
+    document.body.classList.toggle('notebook-open', state.notebookOpen);
+    els.notebookToggleButton?.setAttribute('aria-expanded', state.notebookOpen ? 'true' : 'false');
+    els.notebookPanelTitle.textContent = files.length ? `${files.length} notebook item${files.length === 1 ? '' : 's'}` : 'Notebooks';
+    els.notebookFileList.innerHTML = files.length ? files.map((item) => `
+        <button class="${item.id === file?.id ? 'active' : ''}" type="button" data-notebook-file="${escapeHtml(item.id)}">
+            <i data-lucide="${notebookFileIcon(item)}"></i>
+            <span>
+                <strong>${escapeHtml(item.title || item.path)}</strong>
+                <small>${escapeHtml(item.path)}</small>
+            </span>
+        </button>
+    `).join('') : '<p class="empty-list">No notebook files yet.</p>';
+
+    document.querySelectorAll('.notebook-tab').forEach((button) => {
+        button.classList.toggle('active', button.dataset.notebookTab === state.notebook.activeTab);
+    });
+
+    els.notebookEditor.classList.toggle('hidden', state.notebook.activeTab !== 'editor');
+    els.notebookHistory.classList.toggle('hidden', state.notebook.activeTab !== 'history');
+    els.notebookDiff.classList.toggle('hidden', state.notebook.activeTab !== 'diff');
+
+    if (!file) {
+        els.notebookMeta.textContent = 'No file selected';
+        els.notebookEditor.value = '';
+        els.notebookHistory.innerHTML = '';
+        els.notebookDiff.textContent = 'No file selected.';
+        iconRefresh();
+        return;
+    }
+
+    els.notebookMeta.textContent = `${file.path} · ${file.language || file.kind || 'text'} · saved ${formatNotebookTime(file.updatedAt)}`;
+    if (document.activeElement !== els.notebookEditor) els.notebookEditor.value = file.content || '';
+    els.notebookHistory.innerHTML = file.versions.length ? [...file.versions].reverse().map((version) => `
+        <button type="button" class="${version.id === state.notebook.selectedVersionId ? 'active' : ''}" data-notebook-version="${escapeHtml(version.id)}">
+            <strong>${formatNotebookTime(version.createdAt)}</strong>
+            <span>${escapeHtml(version.sourceKey?.startsWith('message:') ? 'AI update' : 'Manual save')}</span>
+        </button>
+    `).join('') : '<p class="empty-list">No versions yet.</p>';
+
+    const selectedVersion = file.versions.find((version) => version.id === state.notebook.selectedVersionId) || file.versions[file.versions.length - 1];
+    els.notebookDiff.textContent = selectedVersion
+        ? buildSimpleDiff(selectedVersion.previousContent, selectedVersion.content)
+        : 'No versions yet.';
+    iconRefresh();
+};
+
+const openNotebookPanel = (path = '') => {
+    state.notebookOpen = true;
+    if (path && state.notebook) {
+        const file = state.notebook.files.find((item) => item.path.toLowerCase() === normalizeNotebookPath(path).toLowerCase());
+        if (file) state.notebook.activeFileId = file.id;
+    }
+    renderNotebookPanel();
+};
+
+const closeNotebookPanel = () => {
+    state.notebookOpen = false;
+    renderNotebookPanel();
+};
 
 const isSafeUrl = (value) => {
     try {
@@ -638,7 +1014,7 @@ const renderSources = (sources) => {
 };
 
 const getMarkdownHtml = (message) => {
-    const content = message.content || '';
+    const content = getVisibleMessageContent(message);
     if (message._markdownSource === content && message._markdownHtml) {
         return message._markdownHtml;
     }
@@ -683,14 +1059,19 @@ const renderActivityPanel = (activity) => {
 };
 
 const renderMessages = () => {
-    const distanceFromBottom = els.messageScroll.scrollHeight - els.messageScroll.scrollTop - els.messageScroll.clientHeight;
-    const shouldStickToBottom = state.busy || distanceFromBottom < 160;
+    const shouldStickToBottom = state.busy || isNearMessageBottom();
     els.emptyState.classList.toggle('hidden', state.messages.length > 0);
     els.messages.classList.toggle('streaming-render', state.busy);
-    els.messages.innerHTML = state.messages.map((message) => {
+    els.messages.innerHTML = state.messages.map((message, index) => {
+        const renderKey = getMessageRenderKey(message, index);
+        const entering = !renderMessages.seenKeys?.has(renderKey);
+        const entryClass = entering && !state.busy ? ' entering' : '';
+        renderMessages.seenKeys = renderMessages.seenKeys || new Set();
+        renderMessages.seenKeys.add(renderKey);
+
         if (message.type === 'policy') {
             return `
-                <article class="policy-banner">
+                <article class="policy-banner${entryClass}">
                     <strong>${escapeHtml(message.content || 'This prompt is against the Terms of Service.')}</strong>
                     <a href="${escapeHtml(message.tosUrl || getTosUrl())}" target="_blank" rel="noopener noreferrer">Terms of Service</a>
                 </article>
@@ -699,7 +1080,7 @@ const renderMessages = () => {
 
         if (message.loading) {
             return `
-                <article class="message assistant">
+                <article class="message assistant" data-render-key="${escapeHtml(renderKey)}">
                     <div class="message-stack">
                         ${renderActivityPanel(message.activity)}
                         <div class="bubble loading" aria-label="Loading">
@@ -713,14 +1094,16 @@ const renderMessages = () => {
         const chips = Array.isArray(message.attachments) && message.attachments.length
             ? `<div class="file-chip-row">${message.attachments.map((file) => `<span class="file-chip">${escapeHtml(file.name || 'file')}</span>`).join('')}</div>`
             : '';
+        const visibleContent = getVisibleMessageContent(message);
         const body = message.role === 'assistant'
             ? (message.streaming
-                ? `<div class="stream-plain">${escapeHtml(message.content || '')}</div>`
+                ? `<div class="stream-plain">${escapeHtml(visibleContent)}</div>`
                 : `<div class="markdown-body">${getMarkdownHtml(message)}</div>`)
-            : escapeHtml(message.content || '');
+            : escapeHtml(visibleContent);
         const streaming = message.streaming ? '<span class="stream-cursor" aria-hidden="true"></span>' : '';
         const sources = message.role === 'assistant' ? renderSources(message.sources) : '';
         const activity = message.role === 'assistant' ? renderActivityPanel(message.activity) : '';
+        const notebookEmbeds = message.role === 'assistant' && !message.streaming ? renderNotebookEmbeds(message) : '';
         const actions = message.id && !state.activeSharedToken ? `
             <div class="message-actions">
                 ${message.role === 'assistant' ? `
@@ -734,15 +1117,13 @@ const renderMessages = () => {
         ` : '';
 
         return `
-            <article class="message ${message.role === 'user' ? 'user' : 'assistant'}${message.streaming ? ' streaming' : ''}" data-message-id="${message.id || ''}">
-                <div class="message-stack">${activity}<div class="bubble">${body}${streaming}${chips}${sources}</div>${actions}</div>
+            <article class="message ${message.role === 'user' ? 'user' : 'assistant'}${message.streaming ? ' streaming' : ''}${entryClass}" data-message-id="${message.id || ''}" data-render-key="${escapeHtml(renderKey)}">
+                <div class="message-stack">${activity}<div class="bubble">${body}${streaming}${chips}${sources}${notebookEmbeds}</div>${actions}</div>
             </article>
         `;
     }).join('');
+    if (shouldStickToBottom) queueBottomLock();
     requestAnimationFrame(() => {
-        if (shouldStickToBottom) {
-            els.messageScroll.scrollTop = els.messageScroll.scrollHeight;
-        }
         if (!state.busy) {
             queueMathTypeset();
             iconRefresh();
@@ -753,10 +1134,20 @@ const renderMessages = () => {
 const scheduleRenderMessages = () => {
     if (scheduleRenderMessages.queued) return;
     scheduleRenderMessages.queued = true;
-    requestAnimationFrame(() => {
+    const now = performance.now();
+    const elapsed = now - (scheduleRenderMessages.lastRenderAt || 0);
+    const delay = state.busy ? Math.max(0, STREAM_RENDER_INTERVAL_MS - elapsed) : 0;
+    const render = () => requestAnimationFrame(() => {
         scheduleRenderMessages.queued = false;
+        scheduleRenderMessages.timer = null;
+        scheduleRenderMessages.lastRenderAt = performance.now();
         renderMessages();
     });
+    if (delay > 0) {
+        scheduleRenderMessages.timer = setTimeout(render, delay);
+        return;
+    }
+    render();
 };
 
 const renderAttachments = () => {
@@ -903,6 +1294,8 @@ const createChat = async () => {
     });
     state.activeChatId = data.chat.id;
     state.activeSharedToken = '';
+    state.temporaryMode = false;
+    els.temporaryToggle.checked = false;
     state.messages = [];
     window.location.hash = chatUrl(data.chat.id);
     await fetchChats();
@@ -919,7 +1312,10 @@ const loadMessages = async (chatId) => {
     const data = await apiFetch(`/chats/${chatId}/messages`);
     state.activeChatId = Number(chatId);
     state.activeSharedToken = '';
+    state.temporaryMode = false;
+    els.temporaryToggle.checked = false;
     state.messages = data.messages || [];
+    processNotebookActionsForMessages();
     if (data.chat?.model && state.config?.models?.some((model) => model.id === data.chat.model)) {
         els.modelSelect.value = data.chat.model;
     }
@@ -935,16 +1331,38 @@ const loadSharedChat = async (token) => {
     const data = await apiFetch(`/shared/${encodeURIComponent(token)}`);
     state.activeChatId = null;
     state.activeSharedToken = token;
+    state.temporaryMode = false;
+    els.temporaryToggle.checked = false;
     state.messages = data.messages || [];
+    processNotebookActionsForMessages();
     renderChats();
     renderMessages();
 };
 
 const startNewChat = () => {
+    if (state.temporaryMode) state.temporaryMessages = state.messages;
     state.activeChatId = null;
     state.activeSharedToken = '';
+    state.temporaryMode = false;
+    els.temporaryToggle.checked = false;
     state.messages = [];
     window.location.hash = newChatUrl();
+    updateSettingsSummary();
+    renderChats();
+    renderMessages();
+};
+
+const startTemporaryChat = () => {
+    if (!state.temporaryMode) {
+        state.temporaryMessages = state.temporaryMessages || [];
+    }
+    state.activeChatId = null;
+    state.activeSharedToken = '';
+    state.temporaryMode = true;
+    els.temporaryToggle.checked = true;
+    state.messages = state.temporaryMessages;
+    window.location.hash = '#/temp';
+    updateSettingsSummary();
     renderChats();
     renderMessages();
 };
@@ -953,6 +1371,10 @@ const routeFromHash = async () => {
     const hash = window.location.hash || newChatUrl();
     const chatMatch = hash.match(/^#\/chat\/(\d+)$/);
     const shareMatch = hash.match(/^#\/share\/([a-zA-Z0-9_-]+)$/);
+    if (hash === '#/temp') {
+        startTemporaryChat();
+        return;
+    }
     if (chatMatch) {
         await loadMessages(Number(chatMatch[1]));
         return;
@@ -1047,7 +1469,17 @@ const sendMessage = async (options = {}) => {
     sendMessage.userDraft = null;
 
     try {
-        const chatId = state.activeChatId || await ensureChat();
+        const isTemporary = state.temporaryMode;
+        const temporaryHistory = isTemporary
+            ? state.messages
+                .filter((message) => message.role === 'user' || message.role === 'assistant')
+                .slice(-(state.config?.limits?.contextMessages || 50))
+                .map((message) => ({
+                    role: message.role,
+                    content: getVisibleMessageContent(message)
+                }))
+            : [];
+        const chatId = isTemporary ? null : (state.activeChatId || await ensureChat());
         const filesToSend = (isRegenerate || isResend) ? [] : state.pendingFiles;
         const attachments = await Promise.all(filesToSend.map(readFilePayload));
         const publicAttachments = filesToSend.map((file) => ({
@@ -1109,13 +1541,15 @@ const sendMessage = async (options = {}) => {
             regenerateMessageId: options.regenerateMessageId || undefined,
             resendMessageId: options.resendMessageId || undefined,
             displayName: state.user?.displayName || state.user?.email || 'Guest',
+            history: temporaryHistory,
             stream: true,
             turnstileToken: state.turnstileToken
         };
 
         let donePayload = null;
         let policyHandled = false;
-        await streamApi(`/chats/${chatId}/messages`, payload, (event, data) => {
+        const endpoint = isTemporary ? '/temporary/messages' : `/chats/${chatId}/messages`;
+        await streamApi(endpoint, payload, (event, data) => {
             if (event === 'policy') {
                 policyHandled = true;
                 state.messages = state.messages.filter((message) => message !== assistantDraft);
@@ -1165,7 +1599,9 @@ const sendMessage = async (options = {}) => {
             if (event === 'delta') {
                 assistantDraft.loading = false;
                 assistantDraft.content += data.delta || '';
-                scheduleRenderMessages();
+                if (!updateStreamingMessageContent(assistantDraft)) {
+                    scheduleRenderMessages();
+                }
                 return;
             }
 
@@ -1196,6 +1632,7 @@ const sendMessage = async (options = {}) => {
                 loading: false,
                 streaming: false
             });
+            processNotebookActionsForMessage(assistantDraft);
         } else {
             assistantDraft.loading = false;
             assistantDraft.streaming = false;
@@ -1203,8 +1640,13 @@ const sendMessage = async (options = {}) => {
 
         updateUsage(donePayload?.usage);
         resetTurnstile('message');
-        await fetchChats();
-        if (state.activeChatId) window.location.hash = chatUrl(state.activeChatId);
+        if (isTemporary) {
+            state.temporaryMessages = state.messages;
+            renderChats();
+        } else {
+            await fetchChats();
+            if (state.activeChatId) window.location.hash = chatUrl(state.activeChatId);
+        }
     } catch (error) {
         state.messages = state.messages.filter((message) => !message.loading && !message.streaming);
         resetTurnstile('message');
@@ -1330,7 +1772,7 @@ els.messages.addEventListener('click', (event) => {
     const copyButton = event.target.closest('[data-copy-message]');
     if (copyButton) {
         const message = state.messages.find((item) => item.id === Number(copyButton.dataset.copyMessage));
-        copyText(message?.content || '');
+        copyText(getVisibleMessageContent(message));
         return;
     }
 
@@ -1349,7 +1791,23 @@ els.messages.addEventListener('click', (event) => {
     const deleteButton = event.target.closest('[data-delete-message]');
     if (deleteButton && confirm('Delete this message?')) {
         deleteMessage(deleteButton.dataset.deleteMessage).catch((error) => showToast(error.message));
+        return;
     }
+
+    const notebookButton = event.target.closest('[data-open-notebook-path]');
+    if (notebookButton) {
+        openNotebookPanel(notebookButton.dataset.openNotebookPath || '');
+    }
+});
+
+els.templateTray.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-template-id]');
+    if (!button) return;
+    const template = PROMPT_TEMPLATES[button.dataset.templateId];
+    if (!template) return;
+    els.messageInput.value = template;
+    autoGrowInput();
+    els.messageInput.focus();
 });
 
 els.attachButton.addEventListener('click', () => els.fileInput.click());
@@ -1389,6 +1847,11 @@ els.attachmentRow.addEventListener('click', (event) => {
 });
 
 els.chatList.addEventListener('click', (event) => {
+    const temporaryButton = event.target.closest('[data-temporary-chat]');
+    if (temporaryButton) {
+        startTemporaryChat();
+        return;
+    }
     const newButton = event.target.closest('[data-new-chat]');
     if (newButton) {
         startNewChat();
@@ -1462,6 +1925,14 @@ els.autoWebToggle.addEventListener('change', () => {
     updateSettingsSummary();
 });
 
+els.temporaryToggle.addEventListener('change', () => {
+    if (els.temporaryToggle.checked) {
+        startTemporaryChat();
+    } else {
+        startNewChat();
+    }
+});
+
 els.deepResearchToggle.addEventListener('change', () => {
     if (els.deepResearchToggle.checked && !state.user) {
         els.deepResearchToggle.checked = false;
@@ -1484,6 +1955,62 @@ els.settingsButton.addEventListener('click', () => {
 });
 
 els.sidebarToggleButton.addEventListener('click', toggleSidebar);
+els.notebookToggleButton.addEventListener('click', () => {
+    if (state.notebookOpen) {
+        closeNotebookPanel();
+    } else {
+        openNotebookPanel();
+    }
+});
+els.closeNotebookButton.addEventListener('click', closeNotebookPanel);
+els.newNotebookFileButton.addEventListener('click', () => {
+    const path = prompt('Notebook path:', 'notes/new-note.md');
+    if (path === null) return;
+    const file = upsertNotebookFile({
+        path,
+        title: normalizeNotebookPath(path).split('/').pop(),
+        language: path.endsWith('.md') ? 'markdown' : 'text',
+        kind: 'note',
+        content: ''
+    }, 'manual');
+    state.notebook.activeFileId = file.id;
+    state.notebook.activeTab = 'editor';
+    saveNotebook();
+    openNotebookPanel(file.path);
+});
+els.saveNotebookButton.addEventListener('click', () => {
+    const file = getActiveNotebookFile();
+    if (!file) return;
+    const nextContent = els.notebookEditor.value;
+    file.versions.push(createNotebookVersion({ file, content: nextContent, sourceKey: 'manual' }));
+    file.versions = file.versions.slice(-30);
+    file.content = nextContent;
+    file.updatedAt = Date.now();
+    state.notebook.selectedVersionId = file.versions[file.versions.length - 1]?.id || '';
+    saveNotebook();
+    renderNotebookPanel();
+    showToast('Notebook saved.');
+});
+els.notebookFileList.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-notebook-file]');
+    if (!button) return;
+    state.notebook.activeFileId = button.dataset.notebookFile;
+    state.notebook.selectedVersionId = '';
+    renderNotebookPanel();
+});
+document.querySelectorAll('.notebook-tab').forEach((button) => {
+    button.addEventListener('click', () => {
+        state.notebook.activeTab = button.dataset.notebookTab || 'editor';
+        renderNotebookPanel();
+    });
+});
+els.notebookHistory.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-notebook-version]');
+    if (!button) return;
+    state.notebook.selectedVersionId = button.dataset.notebookVersion;
+    state.notebook.activeTab = 'diff';
+    renderNotebookPanel();
+});
 
 document.addEventListener('click', (event) => {
     const target = event.target;

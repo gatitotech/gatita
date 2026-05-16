@@ -83,6 +83,11 @@
                                 <span class="toggle-track"></span>
                                 <span>Auto web check</span>
                             </label>
+                            <label class="thinking-toggle">
+                                <input id="temporaryToggle" type="checkbox">
+                                <span class="toggle-track"></span>
+                                <span>Temporary chat</span>
+                            </label>
                             <label class="thinking-toggle research-control" title="Deep research is available for signed-in accounts">
                                 <input id="deepResearchToggle" type="checkbox">
                                 <span class="toggle-track"></span>
@@ -90,6 +95,10 @@
                             </label>
                         </div>
                     </div>
+                    <button class="settings-button notebook-open-btn" id="notebookToggleButton" type="button" aria-expanded="false" aria-controls="notebookPanel">
+                        <i data-lucide="notebook-tabs"></i>
+                        <span>Notebooks</span>
+                    </button>
                 </div>
             </header>
 
@@ -99,10 +108,22 @@
                     <h1>Gatita Ask</h1>
                 </div>
                 <div class="messages" id="messages"></div>
+                <div class="scroll-sentinel" id="scrollSentinel" aria-hidden="true"></div>
             </div>
 
             <section class="composer-zone" aria-label="Message composer">
                 <div class="attachment-row" id="attachmentRow"></div>
+                <div class="template-tray" id="templateTray" aria-label="Prompt templates">
+                    <span>Try</span>
+                    <button type="button" data-template-id="coding">Debug code</button>
+                    <button type="button" data-template-id="coding-notebook">Build a file</button>
+                    <button type="button" data-template-id="school">Study guide</button>
+                    <button type="button" data-template-id="school-essay">Essay outline</button>
+                    <button type="button" data-template-id="writing">Rewrite</button>
+                    <button type="button" data-template-id="writing-story">Story starter</button>
+                    <button type="button" data-template-id="research">Research brief</button>
+                    <button type="button" data-template-id="research-compare">Compare sources</button>
+                </div>
                 <form class="composer" id="composer">
                     <button class="icon-btn attach-btn" id="attachButton" type="button" aria-label="Attach files" title="Attach files">
                         <i data-lucide="paperclip"></i>
@@ -120,6 +141,46 @@
                 </div>
             </section>
         </section>
+
+        <aside class="notebook-panel hidden" id="notebookPanel" aria-label="Notebooks">
+            <div class="notebook-head">
+                <div>
+                    <span class="mode-label">Workspace</span>
+                    <strong id="notebookPanelTitle">Notebooks</strong>
+                </div>
+                <button class="icon-btn" id="closeNotebookButton" type="button" aria-label="Close notebooks">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+
+            <div class="notebook-toolbar">
+                <button class="small-btn" id="newNotebookFileButton" type="button">
+                    <i data-lucide="file-plus-2"></i>
+                    <span>New note</span>
+                </button>
+                <button class="small-btn" id="saveNotebookButton" type="button">
+                    <i data-lucide="save"></i>
+                    <span>Save</span>
+                </button>
+            </div>
+
+            <div class="notebook-body">
+                <nav class="notebook-files" id="notebookFileList" aria-label="Notebook files"></nav>
+
+                <section class="notebook-workspace">
+                    <div class="notebook-tabs" role="tablist">
+                        <button class="notebook-tab active" type="button" data-notebook-tab="editor">Editor</button>
+                        <button class="notebook-tab" type="button" data-notebook-tab="history">History</button>
+                        <button class="notebook-tab" type="button" data-notebook-tab="diff">Diff</button>
+                    </div>
+
+                    <div class="notebook-meta" id="notebookMeta">No file selected</div>
+                    <textarea class="notebook-editor" id="notebookEditor" spellcheck="true" placeholder="Notebook files and AI-created notes appear here."></textarea>
+                    <div class="notebook-history hidden" id="notebookHistory"></div>
+                    <pre class="notebook-diff hidden" id="notebookDiff"></pre>
+                </section>
+            </div>
+        </aside>
     </main>
 
     <div class="modal-backdrop hidden" id="authModal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
