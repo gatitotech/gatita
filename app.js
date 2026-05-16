@@ -9,11 +9,11 @@ const NOTEBOOK_BLOCK_RE = /<gatita-notebook\b([^>]*)>([\s\S]*?)<\/gatita-noteboo
 const NOTEBOOK_PARTIAL_RE = /<gatita-notebook\b[\s\S]*$/i;
 const PROMPT_TEMPLATES = {
     coding: 'Debug this code and explain the fix clearly. I will paste the code below:\n\n```\n// paste code here\n```',
-    'coding-notebook': 'Create a small starter project in a notebook file. Use one clear file and explain what it does. Topic: a simple todo app.',
+    'coding-notebook': 'Create a concise notebook note for this coding topic. Include key ideas, examples, and pitfalls, but do not create project files. Topic: ',
     school: 'Make me a study guide for this topic with key terms, examples, and a quick self-quiz: ',
-    'school-essay': 'Help me outline a strong essay in a notebook. Topic: [topic]. Include thesis options, structure, evidence ideas, and a first draft section.',
+    'school-essay': 'Create notebook notes for a strong essay. Topic: [topic]. Include thesis options, structure, evidence ideas, and a short draft plan.',
     writing: 'Rewrite this to be clearer, more natural, and more polished while keeping my meaning:\n\n',
-    'writing-story': 'Give me three story openings with different tones, then put the best one into a notebook for editing. Genre: ',
+    'writing-story': 'Create notebook notes for a story idea with three opening options and revision notes. Genre: ',
     research: 'Make a concise research brief with current context, important facts, and open questions. Topic: ',
     'research-compare': 'Compare two sides of this topic fairly, list what evidence would settle the disagreement, and suggest reliable sources to check: '
 };
@@ -104,8 +104,10 @@ const els = {
     notebookPanel: document.getElementById('notebookPanel'),
     closeNotebookButton: document.getElementById('closeNotebookButton'),
     notebookPanelTitle: document.getElementById('notebookPanelTitle'),
+    notebookScopeText: document.getElementById('notebookScopeText'),
     notebookFileList: document.getElementById('notebookFileList'),
     notebookEditor: document.getElementById('notebookEditor'),
+    notebookPreview: document.getElementById('notebookPreview'),
     notebookMeta: document.getElementById('notebookMeta'),
     notebookHistory: document.getElementById('notebookHistory'),
     notebookDiff: document.getElementById('notebookDiff'),
@@ -134,6 +136,7 @@ const state = {
     authTurnstileWidgetId: null,
     authMode: 'login',
     notebook: null,
+    notebookDrafts: new Map(),
     notebookOpen: false,
     activeStreams: new Map(),
     busy: false
@@ -715,7 +718,7 @@ const parseNotebookAttributes = (value) => {
 };
 
 const normalizeNotebookPath = (value, fallback = 'note.md') => {
-    const cleaned = String(value || fallback)
+    let cleaned = String(value || fallback)
         .replace(/\\/g, '/')
         .replace(/\.\./g, '')
         .replace(/[<>:"|?*\u0000-\u001f]/g, '')
@@ -723,6 +726,12 @@ const normalizeNotebookPath = (value, fallback = 'note.md') => {
         .replace(/^\/+/, '')
         .trim()
         .slice(0, 160);
+    if (!cleaned) cleaned = fallback;
+    if (!/\.(md|markdown|txt)$/i.test(cleaned)) {
+        cleaned = cleaned.includes('.')
+            ? cleaned.replace(/\.[^/.]+$/i, '.md')
+            : `${cleaned}.md`;
+    }
     return cleaned || fallback;
 };
 
@@ -737,8 +746,8 @@ const parseNotebookActionsFromText = (value) => {
                 : 'upsert',
             path,
             title: String(attrs.title || path.split('/').pop() || 'Notebook item').slice(0, 100),
-            language: String(attrs.language || attrs.lang || '').slice(0, 40),
-            kind: String(attrs.kind || attrs.type || 'note').slice(0, 40),
+            language: 'markdown',
+            kind: 'note',
             content: String(content || '').replace(/^\n+|\n+$/g, '').slice(0, 100000)
         });
         return '';
@@ -759,6 +768,15 @@ const getNotebookActions = (message) => {
 
 const getVisibleMessageContent = (message) => stripNotebookBlocks(message?.content || '');
 
+const notebookStorageKeyForChat = (chatId) => `notebook_chat_${Number(chatId)}`;
+
+const currentNotebookStorageKey = () => {
+    if (state.temporaryMode || state.activeSharedToken || !state.activeChatId) return '';
+    return notebookStorageKeyForChat(state.activeChatId);
+};
+
+const canPersistNotebook = () => Boolean(currentNotebookStorageKey());
+
 const emptyNotebook = () => ({
     files: [],
     activeFileId: '',
@@ -767,8 +785,16 @@ const emptyNotebook = () => ({
 });
 
 const loadNotebook = () => {
+    const storageKey = currentNotebookStorageKey();
+    if (!storageKey) return emptyNotebook();
     try {
-        const parsed = JSON.parse(storageGet('notebook') || '');
+        let raw = storageGet(storageKey);
+        if (!raw && storageGet('notebook') && storageGet('notebook_migrated') !== '1') {
+            raw = storageGet('notebook');
+            storageSet(storageKey, raw);
+            storageSet('notebook_migrated', '1');
+        }
+        const parsed = JSON.parse(raw || '');
         if (parsed && Array.isArray(parsed.files)) {
             return {
                 ...emptyNotebook(),
@@ -777,8 +803,8 @@ const loadNotebook = () => {
                     id: file.id || crypto.randomUUID?.() || `file-${Date.now()}-${Math.random()}`,
                     path: normalizeNotebookPath(file.path || file.title || 'note.md'),
                     title: String(file.title || file.path || 'Notebook item').slice(0, 100),
-                    language: String(file.language || '').slice(0, 40),
-                    kind: String(file.kind || 'note').slice(0, 40),
+                    language: 'markdown',
+                    kind: 'note',
                     content: String(file.content || ''),
                     updatedAt: Number(file.updatedAt || Date.now()),
                     versions: Array.isArray(file.versions) ? file.versions.slice(-30) : []
@@ -790,7 +816,9 @@ const loadNotebook = () => {
 };
 
 const saveNotebook = () => {
-    storageSet('notebook', JSON.stringify(state.notebook || emptyNotebook()));
+    const storageKey = currentNotebookStorageKey();
+    if (!storageKey) return;
+    storageSet(storageKey, JSON.stringify(state.notebook || emptyNotebook()));
 };
 
 const getActiveNotebookFile = () => {
@@ -800,9 +828,9 @@ const getActiveNotebookFile = () => {
 
 const notebookFileIcon = (file) => {
     const lower = String(file?.path || '').toLowerCase();
-    if (/\.(js|jsx|ts|tsx|py|java|go|rs|rb|php|css|html)$/i.test(lower)) return 'file-code-2';
-    if (/\.(md|txt|doc|docx)$/i.test(lower)) return 'file-text';
-    return 'file';
+    if (/research|source|brief/.test(lower)) return 'book-open-text';
+    if (/code|debug|program|dev/.test(lower)) return 'file-code-2';
+    return 'file-text';
 };
 
 const createNotebookVersion = ({ file, content, sourceKey = 'manual' }) => ({
@@ -822,8 +850,8 @@ const upsertNotebookFile = (action, sourceKey = 'manual') => {
             id: crypto.randomUUID?.() || `file-${Date.now()}-${Math.random()}`,
             path,
             title: String(action.title || path.split('/').pop() || 'Notebook item').slice(0, 100),
-            language: String(action.language || '').slice(0, 40),
-            kind: String(action.kind || 'note').slice(0, 40),
+            language: 'markdown',
+            kind: 'note',
             content: '',
             updatedAt: Date.now(),
             versions: []
@@ -841,10 +869,11 @@ const upsertNotebookFile = (action, sourceKey = 'manual') => {
         file.versions = file.versions.slice(-30);
         file.content = nextContent;
         file.updatedAt = Date.now();
+        state.notebookDrafts?.delete(file.id);
     }
     file.title = String(action.title || file.title || path.split('/').pop() || 'Notebook item').slice(0, 100);
-    file.language = String(action.language || file.language || '').slice(0, 40);
-    file.kind = String(action.kind || file.kind || 'note').slice(0, 40);
+    file.language = 'markdown';
+    file.kind = 'note';
     state.notebook.activeFileId = file.id;
     return file;
 };
@@ -865,6 +894,7 @@ const renderNotebookEmbeds = (message) => {
 };
 
 const processNotebookActionsForMessage = (message) => {
+    if (!canPersistNotebook()) return;
     const actions = getNotebookActions(message);
     if (!actions.length) return;
     const sourceKey = message.id ? `message:${message.id}` : (message._clientKey || getMessageRenderKey(message, 0));
@@ -908,54 +938,72 @@ const buildSimpleDiff = (oldText = '', newText = '') => {
 
 const renderNotebookPanel = () => {
     if (!state.notebook) state.notebook = loadNotebook();
+    if (!['editor', 'preview', 'history', 'diff'].includes(state.notebook.activeTab)) {
+        state.notebook.activeTab = 'editor';
+    }
     const file = getActiveNotebookFile();
     if (file && state.notebook.activeFileId !== file.id) state.notebook.activeFileId = file.id;
     const files = [...state.notebook.files].sort((a, b) => a.path.localeCompare(b.path));
+    const writable = canPersistNotebook();
 
     els.notebookPanel.classList.toggle('hidden', !state.notebookOpen);
     document.body.classList.toggle('notebook-open', state.notebookOpen);
     els.notebookToggleButton?.setAttribute('aria-expanded', state.notebookOpen ? 'true' : 'false');
-    els.notebookPanelTitle.textContent = files.length ? `${files.length} notebook item${files.length === 1 ? '' : 's'}` : 'Notebooks';
+    els.notebookPanelTitle.textContent = files.length ? `${files.length} chat note${files.length === 1 ? '' : 's'}` : 'Chat Notes';
+    els.notebookScopeText.textContent = writable
+        ? 'Saved only to this chat'
+        : (state.temporaryMode ? 'Temporary chat notes are not saved' : 'Open a saved chat to save notes');
+    els.newNotebookFileButton.disabled = !writable;
+    els.saveNotebookButton.disabled = !writable || !file;
     els.notebookFileList.innerHTML = files.length ? files.map((item) => `
         <button class="${item.id === file?.id ? 'active' : ''}" type="button" data-notebook-file="${escapeHtml(item.id)}">
             <i data-lucide="${notebookFileIcon(item)}"></i>
             <span>
                 <strong>${escapeHtml(item.title || item.path)}</strong>
-                <small>${escapeHtml(item.path)}</small>
+                <small>${escapeHtml(formatNotebookTime(item.updatedAt))}</small>
             </span>
         </button>
-    `).join('') : '<p class="empty-list">No notebook files yet.</p>';
+    `).join('') : '<p class="empty-list">No chat notes yet.</p>';
 
     document.querySelectorAll('.notebook-tab').forEach((button) => {
         button.classList.toggle('active', button.dataset.notebookTab === state.notebook.activeTab);
     });
 
     els.notebookEditor.classList.toggle('hidden', state.notebook.activeTab !== 'editor');
+    els.notebookPreview.classList.toggle('hidden', state.notebook.activeTab !== 'preview');
     els.notebookHistory.classList.toggle('hidden', state.notebook.activeTab !== 'history');
     els.notebookDiff.classList.toggle('hidden', state.notebook.activeTab !== 'diff');
 
     if (!file) {
         els.notebookMeta.textContent = 'No file selected';
         els.notebookEditor.value = '';
+        els.notebookPreview.innerHTML = '<p class="empty-list">Ask Gatita to create notes in this chat, or add a new note after the chat exists.</p>';
         els.notebookHistory.innerHTML = '';
         els.notebookDiff.textContent = 'No file selected.';
         iconRefresh();
         return;
     }
 
-    els.notebookMeta.textContent = `${file.path} · ${file.language || file.kind || 'text'} · saved ${formatNotebookTime(file.updatedAt)}`;
-    if (document.activeElement !== els.notebookEditor) els.notebookEditor.value = file.content || '';
+    const draftContent = state.notebookDrafts.get(file.id);
+    const editorContent = draftContent ?? file.content ?? '';
+    els.notebookMeta.textContent = `${file.title || file.path} · saved ${formatNotebookTime(file.updatedAt)}${draftContent !== undefined ? ' · unsaved edits' : ''}`;
+    if (document.activeElement !== els.notebookEditor) els.notebookEditor.value = editorContent;
+    const previewContent = state.notebookDrafts.get(file.id) ?? els.notebookEditor.value ?? file.content ?? '';
+    els.notebookPreview.innerHTML = previewContent.trim()
+        ? `<div class="markdown-body">${renderMarkdown(previewContent)}</div>`
+        : '<p class="empty-list">This note is empty.</p>';
     els.notebookHistory.innerHTML = file.versions.length ? [...file.versions].reverse().map((version) => `
         <button type="button" class="${version.id === state.notebook.selectedVersionId ? 'active' : ''}" data-notebook-version="${escapeHtml(version.id)}">
             <strong>${formatNotebookTime(version.createdAt)}</strong>
             <span>${escapeHtml(version.sourceKey?.startsWith('message:') ? 'AI update' : 'Manual save')}</span>
         </button>
-    `).join('') : '<p class="empty-list">No versions yet.</p>';
+    `).join('') : '<p class="empty-list">No note history yet.</p>';
 
     const selectedVersion = file.versions.find((version) => version.id === state.notebook.selectedVersionId) || file.versions[file.versions.length - 1];
     els.notebookDiff.textContent = selectedVersion
         ? buildSimpleDiff(selectedVersion.previousContent, selectedVersion.content)
-        : 'No versions yet.';
+        : 'No note history yet.';
+    highlightCodeBlocks(els.notebookPreview);
     iconRefresh();
 };
 
@@ -1023,13 +1071,35 @@ const parseTableRow = (line) => {
     return cleaned.split('|').map((cell) => cell.trim());
 };
 
+const normalizeCodeLanguage = (value) => {
+    const raw = String(value || '').trim().split(/\s+/)[0].toLowerCase();
+    const aliases = {
+        js: 'javascript',
+        mjs: 'javascript',
+        cjs: 'javascript',
+        ts: 'typescript',
+        py: 'python',
+        rb: 'ruby',
+        sh: 'bash',
+        shell: 'bash',
+        zsh: 'bash',
+        yml: 'yaml',
+        md: 'markdown',
+        cplusplus: 'cpp',
+        'c++': 'cpp',
+        cs: 'csharp',
+        'c#': 'csharp'
+    };
+    return (aliases[raw] || raw).replace(/[^\w-]/g, '');
+};
+
 const renderMarkdown = (value) => {
     const source = String(value || '').replace(/\r\n/g, '\n');
     const codeBlocks = [];
-    const protectedSource = source.replace(/```(\w+)?\n?([\s\S]*?)```/g, (match, lang, code) => {
+    const protectedSource = source.replace(/```([^\n`]*)?\n?([\s\S]*?)```/g, (match, lang, code) => {
         const token = `@@CODEBLOCK_${codeBlocks.length}@@`;
         codeBlocks.push({
-            lang: String(lang || '').replace(/[^\w-]/g, ''),
+            lang: normalizeCodeLanguage(lang),
             code: escapeHtml(code.trim())
         });
         return token;
@@ -1077,7 +1147,8 @@ const renderMarkdown = (value) => {
         if (codeToken) {
             closeLooseBlocks();
             const block = codeBlocks[Number(codeToken[1])];
-            out.push(`<pre><button class="copy-code-btn" type="button" data-copy-code title="Copy code" aria-label="Copy code"><i data-lucide="copy"></i></button><code${block?.lang ? ` class="language-${block.lang}"` : ''}>${block?.code || ''}</code></pre>`);
+            const lang = block?.lang || '';
+            out.push(`<pre${lang ? ` data-code-lang="${escapeHtml(lang)}"` : ''}><button class="copy-code-btn" type="button" data-copy-code title="Copy code" aria-label="Copy code"><i data-lucide="copy"></i></button><code${lang ? ` class="language-${lang}"` : ''}>${block?.code || ''}</code></pre>`);
             continue;
         }
 
@@ -1168,6 +1239,17 @@ const renderMarkdown = (value) => {
 
     closeLooseBlocks();
     return out.join('');
+};
+
+const highlightCodeBlocks = (root = document) => {
+    if (!window.hljs || !root) return;
+    root.querySelectorAll('pre code:not([data-highlighted])').forEach((block) => {
+        try {
+            window.hljs.highlightElement(block);
+        } catch (_) {
+            block.dataset.highlighted = 'yes';
+        }
+    });
 };
 
 const renderSources = (sources) => {
@@ -1300,6 +1382,7 @@ const renderMessages = () => {
     if (shouldStickToBottom) queueBottomLock();
     requestAnimationFrame(() => {
         if (!viewStreaming) {
+            highlightCodeBlocks(els.messages);
             queueMathTypeset();
             iconRefresh();
         }
@@ -1498,6 +1581,8 @@ const loadMessages = async (chatId) => {
     state.activeSharedToken = '';
     state.temporaryMode = false;
     els.temporaryToggle.checked = false;
+    state.notebook = loadNotebook();
+    state.notebookDrafts = new Map();
     const stream = state.activeStreams.get(chatStreamKey(chatId));
     state.messages = stream?.messages || data.messages || [];
     processNotebookActionsForMessages();
@@ -1545,9 +1630,11 @@ const loadSharedChat = async (token) => {
     state.activeSharedToken = token;
     state.temporaryMode = false;
     els.temporaryToggle.checked = false;
+    state.notebook = emptyNotebook();
+    state.notebookDrafts = new Map();
     state.messages = data.messages || [];
-    processNotebookActionsForMessages();
     renderChats();
+    renderNotebookPanel();
     renderMessages();
 };
 
@@ -1558,9 +1645,12 @@ const startNewChat = () => {
     state.temporaryMode = false;
     els.temporaryToggle.checked = false;
     state.messages = [];
+    state.notebook = emptyNotebook();
+    state.notebookDrafts = new Map();
     window.location.hash = newChatUrl();
     updateSettingsSummary();
     renderChats();
+    renderNotebookPanel();
     renderMessages();
 };
 
@@ -1573,9 +1663,12 @@ const startTemporaryChat = () => {
     state.temporaryMode = true;
     els.temporaryToggle.checked = true;
     state.messages = state.temporaryMessages;
+    state.notebook = emptyNotebook();
+    state.notebookDrafts = new Map();
     window.location.hash = '#/temp';
     updateSettingsSummary();
     renderChats();
+    renderNotebookPanel();
     renderMessages();
 };
 
@@ -1610,6 +1703,7 @@ const updateChat = async (chatId, patch) => {
 
 const deleteChat = async (chatId) => {
     await apiFetch(`/chats/${chatId}`, { method: 'DELETE', body: JSON.stringify({}) });
+    storageRemove(notebookStorageKeyForChat(chatId));
     if (state.activeChatId === Number(chatId)) startNewChat();
     await fetchChats();
 };
@@ -1626,8 +1720,25 @@ const shareChat = async (chatId) => {
 };
 
 const copyText = async (text) => {
-    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text || '').catch(() => {});
-    showToast('Copied.');
+    const value = String(text || '');
+    let copied = false;
+    if (navigator.clipboard?.writeText) {
+        copied = await navigator.clipboard.writeText(value).then(() => true).catch(() => false);
+    }
+    if (!copied) {
+        const field = document.createElement('textarea');
+        field.value = value;
+        field.setAttribute('readonly', '');
+        field.style.position = 'fixed';
+        field.style.left = '-9999px';
+        field.style.top = '0';
+        document.body.appendChild(field);
+        field.focus();
+        field.select();
+        copied = document.execCommand('copy');
+        field.remove();
+    }
+    showToast(copied ? 'Copied.' : 'Copy was blocked by the browser.');
 };
 
 const deleteMessage = async (messageId) => {
@@ -2209,12 +2320,16 @@ els.notebookToggleButton.addEventListener('click', () => {
 });
 els.closeNotebookButton.addEventListener('click', closeNotebookPanel);
 els.newNotebookFileButton.addEventListener('click', () => {
-    const path = prompt('Notebook path:', 'notes/new-note.md');
+    if (!canPersistNotebook()) {
+        showToast('Open or create a saved chat before adding notes.');
+        return;
+    }
+    const path = prompt('Note path:', 'notes/new-note.md');
     if (path === null) return;
     const file = upsertNotebookFile({
         path,
         title: normalizeNotebookPath(path).split('/').pop(),
-        language: path.endsWith('.md') ? 'markdown' : 'text',
+        language: 'markdown',
         kind: 'note',
         content: ''
     }, 'manual');
@@ -2224,17 +2339,34 @@ els.newNotebookFileButton.addEventListener('click', () => {
     openNotebookPanel(file.path);
 });
 els.saveNotebookButton.addEventListener('click', () => {
+    if (!canPersistNotebook()) {
+        showToast('Open or create a saved chat before saving notes.');
+        return;
+    }
     const file = getActiveNotebookFile();
     if (!file) return;
-    const nextContent = els.notebookEditor.value;
+    const nextContent = state.notebookDrafts.get(file.id) ?? els.notebookEditor.value;
     file.versions.push(createNotebookVersion({ file, content: nextContent, sourceKey: 'manual' }));
     file.versions = file.versions.slice(-30);
     file.content = nextContent;
     file.updatedAt = Date.now();
     state.notebook.selectedVersionId = file.versions[file.versions.length - 1]?.id || '';
+    state.notebookDrafts.delete(file.id);
     saveNotebook();
     renderNotebookPanel();
     showToast('Notebook saved.');
+});
+els.notebookEditor.addEventListener('input', () => {
+    const file = getActiveNotebookFile();
+    if (!file) return;
+    state.notebookDrafts.set(file.id, els.notebookEditor.value);
+    els.notebookMeta.textContent = `${file.title || file.path} · saved ${formatNotebookTime(file.updatedAt)} · unsaved edits`;
+});
+els.notebookPreview.addEventListener('click', (event) => {
+    const codeButton = event.target.closest('[data-copy-code]');
+    if (!codeButton) return;
+    const code = codeButton.closest('pre')?.querySelector('code')?.textContent || '';
+    copyText(code);
 });
 els.notebookFileList.addEventListener('click', (event) => {
     const button = event.target.closest('[data-notebook-file]');
@@ -2265,19 +2397,29 @@ document.addEventListener('click', (event) => {
     els.settingsButton.setAttribute('aria-expanded', 'false');
 });
 
+const isEditableShortcutTarget = (target) => Boolean(target?.closest?.(
+    'input, textarea, select, [contenteditable="true"], [contenteditable="plaintext-only"]'
+));
+
+const browserEditShortcutKeys = new Set(['a', 'c', 'v', 'x', 'y', 'z', 'insert']);
+
 document.addEventListener('keydown', (event) => {
     const isModifier = event.metaKey || event.ctrlKey;
-    if (isModifier && event.key.toLowerCase() === 'k') {
+    const key = event.key.toLowerCase();
+    if (isModifier && (isEditableShortcutTarget(event.target) || browserEditShortcutKeys.has(key))) {
+        return;
+    }
+    if (isModifier && key === 'k') {
         event.preventDefault();
         els.messageInput.focus();
         return;
     }
-    if (isModifier && event.key.toLowerCase() === 'n') {
+    if (isModifier && key === 'n') {
         event.preventDefault();
         startNewChat();
         return;
     }
-    if (isModifier && event.key.toLowerCase() === 'b') {
+    if (isModifier && key === 'b') {
         event.preventDefault();
         toggleSidebar();
         return;
@@ -2378,7 +2520,11 @@ els.authForm.addEventListener('submit', (event) => {
     submitAuth();
 });
 
-window.addEventListener('load', iconRefresh);
+window.addEventListener('load', () => {
+    iconRefresh();
+    highlightCodeBlocks(els.messages);
+    highlightCodeBlocks(els.notebookPreview);
+});
 window.addEventListener('hashchange', () => {
     routeFromHash().catch((error) => {
         showToast(error.message || 'Chat could not load.');

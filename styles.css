@@ -53,6 +53,17 @@ button {
     color: inherit;
 }
 
+.message-scroll,
+.messages,
+.bubble,
+.markdown-body,
+.notebook-panel,
+input,
+textarea {
+    user-select: text;
+    -webkit-user-select: text;
+}
+
 .smoke-layer {
     position: fixed;
     inset: -20%;
@@ -846,10 +857,30 @@ body.consent-locked .ask-app {
     position: relative;
     max-width: 100%;
     overflow-x: auto;
-    padding: 12px;
+    padding: 34px 12px 12px;
     border: 1px solid rgba(229, 177, 109, 0.18);
     border-radius: var(--radius);
     background: rgba(0, 0, 0, 0.28);
+}
+
+.markdown-body pre::before {
+    position: absolute;
+    top: 9px;
+    left: 12px;
+    color: var(--muted);
+    content: attr(data-code-lang);
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+.markdown-body pre:not([data-code-lang]) {
+    padding-top: 12px;
+}
+
+.markdown-body pre:not([data-code-lang])::before {
+    content: none;
 }
 
 .copy-code-btn {
@@ -863,6 +894,13 @@ body.consent-locked .ask-app {
 }
 
 .markdown-body pre code {
+    padding: 0;
+    background: transparent;
+    color: inherit;
+}
+
+.markdown-body pre code.hljs,
+.notebook-preview pre code.hljs {
     padding: 0;
     background: transparent;
 }
@@ -1340,6 +1378,7 @@ body.consent-locked .ask-app {
 
 .notebook-toolbar {
     justify-content: flex-start;
+    flex-wrap: wrap;
 }
 
 .notebook-toolbar .small-btn {
@@ -1348,9 +1387,21 @@ body.consent-locked .ask-app {
     gap: 7px;
 }
 
+.notebook-toolbar .small-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
 .notebook-toolbar svg {
     width: 15px;
     height: 15px;
+}
+
+.notebook-scope {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 0.74rem;
+    font-weight: 800;
 }
 
 .notebook-body {
@@ -1363,8 +1414,9 @@ body.consent-locked .ask-app {
     display: flex;
     gap: 8px;
     overflow-x: auto;
-    padding: 10px 12px;
+    padding: 12px;
     border-bottom: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.018);
 }
 
 .notebook-files button {
@@ -1374,13 +1426,19 @@ body.consent-locked .ask-app {
     gap: 8px;
     min-width: 180px;
     max-width: 240px;
-    padding: 9px;
+    padding: 10px;
     border: 1px solid var(--line);
     border-radius: var(--radius);
     color: var(--text-soft);
     background: rgba(255, 255, 255, 0.04);
     text-align: left;
     cursor: pointer;
+    transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+}
+
+.notebook-files button:hover {
+    border-color: rgba(229, 177, 109, 0.3);
+    background: rgba(255, 255, 255, 0.06);
 }
 
 .notebook-files button.active {
@@ -1413,7 +1471,7 @@ body.consent-locked .ask-app {
     display: grid;
     min-height: 0;
     grid-template-rows: auto auto minmax(0, 1fr);
-    padding: 12px;
+    padding: 14px;
 }
 
 .notebook-tabs {
@@ -1451,6 +1509,7 @@ body.consent-locked .ask-app {
 }
 
 .notebook-editor,
+.notebook-preview,
 .notebook-diff,
 .notebook-history {
     min-height: 0;
@@ -1466,6 +1525,20 @@ body.consent-locked .ask-app {
     color: var(--text);
     outline: 0;
     line-height: 1.55;
+}
+
+.notebook-preview {
+    overflow-y: auto;
+    padding: 14px;
+}
+
+.notebook-preview .markdown-body {
+    display: grid;
+    gap: 10px;
+}
+
+.notebook-preview .markdown-body > :first-child {
+    margin-top: 0;
 }
 
 .notebook-history {
