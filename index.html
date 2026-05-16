@@ -246,6 +246,15 @@
                     </div>
                 </div>
 
+                <label class="account-toggle">
+                    <span>
+                        <strong>Completion notifications</strong>
+                        <small>Get a browser notification when Gatita finishes answering.</small>
+                    </span>
+                    <input id="notificationsToggle" type="checkbox">
+                    <span class="toggle-track"></span>
+                </label>
+
                 <div class="account-actions">
                     <button class="small-btn" id="accountSignOutButton" type="button">Sign out</button>
                 </div>
@@ -262,6 +271,28 @@
                     <p class="form-error" id="passwordError" role="alert"></p>
                     <button class="auth-submit" type="submit">Change password</button>
                 </form>
+            </div>
+        </section>
+    </div>
+
+    <div class="modal-backdrop consent-backdrop hidden" id="notificationPromptModal" role="dialog" aria-modal="true" aria-labelledby="notificationPromptTitle">
+        <section class="auth-modal consent-modal">
+            <div class="modal-head">
+                <h2 id="notificationPromptTitle">Notify When Gatita Is Done?</h2>
+                <button class="icon-btn" id="notificationPromptCloseButton" type="button" aria-label="Close">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div class="consent-body">
+                <p>Gatita can send a browser notification when a response finishes, so you can switch tabs and come back when the answer is ready.</p>
+                <div class="consent-note">
+                    <strong>Optional browser permission</strong>
+                    <span>Notifications are only used for finished Ask responses. You can turn them off again in the account menu or your browser settings.</span>
+                </div>
+                <div class="notification-actions">
+                    <button class="auth-submit" id="notificationEnableButton" type="button">Enable notifications</button>
+                    <button class="small-btn" id="notificationLaterButton" type="button">Not now</button>
+                </div>
             </div>
         </section>
     </div>

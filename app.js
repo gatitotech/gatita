@@ -4,6 +4,7 @@ const LEGACY_STORAGE_PREFIX = ['cl4', 'nkr_ask_'].join('');
 const API_BASE = window.GATITA_ASK_API_BASE || window[LEGACY_API_BASE_KEY] || 'https://api.clankr.tech/ask-api';
 const LEGAL_VERSION = '2026-05-15';
 const STREAM_RENDER_INTERVAL_MS = 40;
+const NOTIFICATION_PROMPT_INTERVAL_MS = 30 * 60 * 1000;
 const NOTEBOOK_BLOCK_RE = /<gatita-notebook\b([^>]*)>([\s\S]*?)<\/gatita-notebook>/gi;
 const NOTEBOOK_PARTIAL_RE = /<gatita-notebook\b[\s\S]*$/i;
 const PROMPT_TEMPLATES = {
@@ -74,11 +75,16 @@ const els = {
     accountModalEmail: document.getElementById('accountModalEmail'),
     accountMinuteLimit: document.getElementById('accountMinuteLimit'),
     accountDeepLimit: document.getElementById('accountDeepLimit'),
+    notificationsToggle: document.getElementById('notificationsToggle'),
     accountSignOutButton: document.getElementById('accountSignOutButton'),
     passwordForm: document.getElementById('passwordForm'),
     currentPassword: document.getElementById('currentPassword'),
     newPassword: document.getElementById('newPassword'),
     passwordError: document.getElementById('passwordError'),
+    notificationPromptModal: document.getElementById('notificationPromptModal'),
+    notificationPromptCloseButton: document.getElementById('notificationPromptCloseButton'),
+    notificationEnableButton: document.getElementById('notificationEnableButton'),
+    notificationLaterButton: document.getElementById('notificationLaterButton'),
     legalGateModal: document.getElementById('legalGateModal'),
     legalAcceptCheckbox: document.getElementById('legalAcceptCheckbox'),
     legalAcceptButton: document.getElementById('legalAcceptButton'),
@@ -129,7 +135,55 @@ const state = {
     authMode: 'login',
     notebook: null,
     notebookOpen: false,
+    activeStreams: new Map(),
     busy: false
+};
+
+const chatStreamKey = (chatId) => `chat:${Number(chatId)}`;
+const temporaryStreamKey = () => 'temporary';
+
+const streamTargetKey = (target) => (
+    target?.isTemporary ? temporaryStreamKey() : chatStreamKey(target?.chatId)
+);
+
+const currentStreamKey = () => {
+    if (state.temporaryMode) return temporaryStreamKey();
+    if (state.activeChatId && !state.activeSharedToken) return chatStreamKey(state.activeChatId);
+    return '';
+};
+
+const isCurrentViewStreaming = () => state.activeStreams.has(currentStreamKey());
+
+const isStreamTargetActive = (target) => {
+    if (!target) return false;
+    if (target.isTemporary) return state.temporaryMode;
+    return !state.temporaryMode
+        && !state.activeSharedToken
+        && Number(state.activeChatId) === Number(target.chatId);
+};
+
+const setMessagesForStreamTarget = (target, messages) => {
+    const key = streamTargetKey(target);
+    const stream = state.activeStreams.get(key);
+    if (stream) stream.messages = messages;
+    if (target?.isTemporary) state.temporaryMessages = messages;
+    if (isStreamTargetActive(target)) state.messages = messages;
+};
+
+const renderStreamTarget = (target) => {
+    if (!isStreamTargetActive(target)) return;
+    renderMessages();
+};
+
+const refreshBusyState = () => {
+    state.busy = state.activeStreams.size > 0;
+    els.messages?.classList.toggle('streaming-render', isCurrentViewStreaming());
+    els.sendButton.disabled = state.busy;
+};
+
+const replaceHashWithoutRouting = (hash) => {
+    const next = `${window.location.pathname}${window.location.search}${hash}`;
+    window.history.replaceState(null, '', next);
 };
 
 let nextMessageClientKey = 1;
@@ -257,7 +311,7 @@ const loadMathJax = () => new Promise((resolve) => {
 });
 
 const queueMathTypeset = () => {
-    if (state.busy) return;
+    if (isCurrentViewStreaming()) return;
     const hasMath = state.messages.some((message) => (
         message.role === 'assistant'
         && /(\$\$|\\\(|\\\[|\$[^$\n]{1,160}\$)/.test(getVisibleMessageContent(message))
@@ -280,6 +334,125 @@ const showToast = (message) => {
     els.toast.classList.add('show');
     clearTimeout(showToast.timer);
     showToast.timer = setTimeout(() => els.toast.classList.remove('show'), 3200);
+};
+
+const supportsNotifications = () => Boolean(window.Notification) && window.isSecureContext;
+
+const getNotificationPermission = () => {
+    if (!supportsNotifications()) return 'unsupported';
+    return window.Notification.permission;
+};
+
+const notificationsEnabled = () => (
+    storageGet('notifications_enabled') === '1'
+    && getNotificationPermission() === 'granted'
+);
+
+const setNotificationsEnabled = (enabled) => {
+    storageSet('notifications_enabled', enabled ? '1' : '0');
+    updateNotificationUi();
+};
+
+const updateNotificationUi = () => {
+    if (!els.notificationsToggle) return;
+    const permission = getNotificationPermission();
+    const unavailable = permission === 'unsupported' || permission === 'denied';
+    const wrapper = els.notificationsToggle.closest('.account-toggle');
+    const helper = wrapper?.querySelector('small');
+
+    els.notificationsToggle.checked = notificationsEnabled();
+    els.notificationsToggle.disabled = unavailable;
+    wrapper?.classList.toggle('disabled', unavailable);
+
+    if (!helper) return;
+    if (permission === 'denied') {
+        helper.textContent = 'Notifications are blocked in this browser.';
+    } else if (permission === 'unsupported') {
+        helper.textContent = 'Notifications need a supported secure browser.';
+    } else if (notificationsEnabled()) {
+        helper.textContent = 'On. Gatita can notify you when a response finishes.';
+    } else {
+        helper.textContent = 'Get a browser notification when Gatita finishes answering.';
+    }
+};
+
+const markNotificationPrompted = () => {
+    storageSet('notifications_prompted_at', String(Date.now()));
+};
+
+const shouldPromptNotifications = () => {
+    if (!supportsNotifications()) return false;
+    if (getNotificationPermission() !== 'default') return false;
+    if (notificationsEnabled()) return false;
+    const promptedAt = Number(storageGet('notifications_prompted_at') || 0);
+    return !promptedAt || Date.now() - promptedAt >= NOTIFICATION_PROMPT_INTERVAL_MS;
+};
+
+const closeNotificationPrompt = ({ remember = true } = {}) => {
+    if (remember) markNotificationPrompted();
+    els.notificationPromptModal?.classList.add('hidden');
+    updateNotificationUi();
+};
+
+const showNotificationPrompt = ({ force = false } = {}) => {
+    const permission = getNotificationPermission();
+    if (permission === 'granted') {
+        if (force) setNotificationsEnabled(true);
+        return false;
+    }
+    if (permission === 'denied' || permission === 'unsupported') {
+        setNotificationsEnabled(false);
+        return false;
+    }
+    if (!force && !shouldPromptNotifications()) return false;
+
+    markNotificationPrompted();
+    els.notificationPromptModal?.classList.remove('hidden');
+    iconRefresh();
+    return true;
+};
+
+const requestNotificationPermission = async () => {
+    if (!supportsNotifications()) {
+        setNotificationsEnabled(false);
+        showToast('Browser notifications are not available here.');
+        closeNotificationPrompt({ remember: false });
+        return;
+    }
+
+    let permission = getNotificationPermission();
+    if (permission === 'default') {
+        permission = await window.Notification.requestPermission();
+    }
+
+    setNotificationsEnabled(permission === 'granted');
+    closeNotificationPrompt({ remember: false });
+    if (permission !== 'granted') {
+        showToast(permission === 'denied'
+            ? 'Notifications are blocked in this browser.'
+            : 'Notifications were left off.');
+    }
+};
+
+const notifyGenerationDone = (target, message) => {
+    if (!notificationsEnabled()) return;
+    const userIsWatchingResponse = document.visibilityState === 'visible'
+        && document.hasFocus()
+        && isStreamTargetActive(target);
+    if (userIsWatchingResponse) return;
+
+    const body = getVisibleMessageContent(message)
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 140) || 'Your answer is ready.';
+
+    try {
+        new window.Notification('Gatita Ask is done', {
+            body,
+            icon: 'assets/avatar.webp',
+            tag: target?.isTemporary ? 'gatita-ask-temporary' : `gatita-ask-chat-${target?.chatId || 'current'}`
+        });
+    } catch (_) {}
 };
 
 const apiFetch = async (path, options = {}) => {
@@ -398,6 +571,7 @@ const renderAccountWindow = () => {
     els.accountDeepLimit.textContent = state.user
         ? `${deepRemaining}/${deepLimit} left today`
         : 'Sign in required';
+    updateNotificationUi();
 };
 
 const updateAccount = () => {
@@ -1059,13 +1233,14 @@ const renderActivityPanel = (activity) => {
 };
 
 const renderMessages = () => {
-    const shouldStickToBottom = state.busy || isNearMessageBottom();
+    const viewStreaming = isCurrentViewStreaming();
+    const shouldStickToBottom = viewStreaming || isNearMessageBottom();
     els.emptyState.classList.toggle('hidden', state.messages.length > 0);
-    els.messages.classList.toggle('streaming-render', state.busy);
+    els.messages.classList.toggle('streaming-render', viewStreaming);
     els.messages.innerHTML = state.messages.map((message, index) => {
         const renderKey = getMessageRenderKey(message, index);
         const entering = !renderMessages.seenKeys?.has(renderKey);
-        const entryClass = entering && !state.busy ? ' entering' : '';
+        const entryClass = entering && !viewStreaming ? ' entering' : '';
         renderMessages.seenKeys = renderMessages.seenKeys || new Set();
         renderMessages.seenKeys.add(renderKey);
 
@@ -1124,7 +1299,7 @@ const renderMessages = () => {
     }).join('');
     if (shouldStickToBottom) queueBottomLock();
     requestAnimationFrame(() => {
-        if (!state.busy) {
+        if (!viewStreaming) {
             queueMathTypeset();
             iconRefresh();
         }
@@ -1136,7 +1311,7 @@ const scheduleRenderMessages = () => {
     scheduleRenderMessages.queued = true;
     const now = performance.now();
     const elapsed = now - (scheduleRenderMessages.lastRenderAt || 0);
-    const delay = state.busy ? Math.max(0, STREAM_RENDER_INTERVAL_MS - elapsed) : 0;
+    const delay = isCurrentViewStreaming() ? Math.max(0, STREAM_RENDER_INTERVAL_MS - elapsed) : 0;
     const render = () => requestAnimationFrame(() => {
         scheduleRenderMessages.queued = false;
         scheduleRenderMessages.timer = null;
@@ -1283,7 +1458,7 @@ const fetchChats = async () => {
     renderChats();
 };
 
-const createChat = async () => {
+const createChat = async ({ navigate = true, resetMessages = true, reloadList = true } = {}) => {
     const data = await apiFetch('/chats', {
         method: 'POST',
         body: JSON.stringify({
@@ -1296,15 +1471,24 @@ const createChat = async () => {
     state.activeSharedToken = '';
     state.temporaryMode = false;
     els.temporaryToggle.checked = false;
-    state.messages = [];
-    window.location.hash = chatUrl(data.chat.id);
-    await fetchChats();
-    renderMessages();
+    state.chats = [
+        data.chat,
+        ...state.chats.filter((chat) => chat.id !== data.chat.id)
+    ];
+    if (resetMessages) state.messages = [];
+    if (navigate) {
+        window.location.hash = chatUrl(data.chat.id);
+    } else {
+        replaceHashWithoutRouting(chatUrl(data.chat.id));
+    }
+    if (reloadList) await fetchChats();
+    renderChats();
+    if (resetMessages) renderMessages();
 };
 
 const ensureChat = async () => {
     if (state.activeChatId) return state.activeChatId;
-    await createChat();
+    await createChat({ navigate: false, resetMessages: false, reloadList: false });
     return state.activeChatId;
 };
 
@@ -1314,7 +1498,8 @@ const loadMessages = async (chatId) => {
     state.activeSharedToken = '';
     state.temporaryMode = false;
     els.temporaryToggle.checked = false;
-    state.messages = data.messages || [];
+    const stream = state.activeStreams.get(chatStreamKey(chatId));
+    state.messages = stream?.messages || data.messages || [];
     processNotebookActionsForMessages();
     if (data.chat?.model && state.config?.models?.some((model) => model.id === data.chat.model)) {
         els.modelSelect.value = data.chat.model;
@@ -1325,6 +1510,33 @@ const loadMessages = async (chatId) => {
     updateSettingsSummary();
     renderChats();
     renderMessages();
+    scheduleActiveChatSync();
+};
+
+const hasPendingSavedResponse = () => state.messages.some((message) => (
+    message.role === 'assistant'
+    && message.loading
+    && !message.streaming
+));
+
+const scheduleActiveChatSync = () => {
+    clearTimeout(scheduleActiveChatSync.timer);
+    if (!state.activeChatId || state.activeSharedToken || state.temporaryMode) return;
+    if (state.activeStreams.has(chatStreamKey(state.activeChatId))) return;
+    if (!hasPendingSavedResponse()) return;
+
+    const chatId = Number(state.activeChatId);
+    scheduleActiveChatSync.timer = setTimeout(() => {
+        if (Number(state.activeChatId) !== chatId || state.temporaryMode || state.activeSharedToken) return;
+        if (state.activeStreams.has(chatStreamKey(chatId))) return;
+        loadMessages(chatId).catch((error) => showToast(error.message || 'Chat could not sync.'));
+    }, 2500);
+};
+
+const syncActiveChat = async () => {
+    if (!state.activeChatId || state.temporaryMode || state.activeSharedToken) return;
+    if (state.activeStreams.has(chatStreamKey(state.activeChatId))) return;
+    await loadMessages(state.activeChatId);
 };
 
 const loadSharedChat = async (token) => {
@@ -1466,8 +1678,11 @@ const sendMessage = async (options = {}) => {
 
     state.busy = true;
     els.sendButton.disabled = true;
+    showNotificationPrompt();
     sendMessage.userDraft = null;
     const isTemporary = state.temporaryMode;
+    let streamTarget = null;
+    let messageList = state.messages;
 
     try {
         const temporaryHistory = isTemporary
@@ -1480,6 +1695,14 @@ const sendMessage = async (options = {}) => {
                 }))
             : [];
         const chatId = isTemporary ? null : (state.activeChatId || await ensureChat());
+        streamTarget = { isTemporary, chatId };
+        const streamKey = streamTargetKey(streamTarget);
+        messageList = isTemporary ? state.temporaryMessages : state.messages;
+        state.activeStreams.set(streamKey, {
+            target: streamTarget,
+            messages: messageList
+        });
+        refreshBusyState();
         const filesToSend = (isRegenerate || isResend) ? [] : state.pendingFiles;
         const attachments = await Promise.all(filesToSend.map(readFilePayload));
         const publicAttachments = filesToSend.map((file) => ({
@@ -1489,8 +1712,8 @@ const sendMessage = async (options = {}) => {
         }));
 
         if (isResend) {
-            const edited = state.messages.find((item) => item.id === options.resendMessageId);
-            state.messages = state.messages.filter((message) => {
+            const edited = messageList.find((item) => item.id === options.resendMessageId);
+            messageList = messageList.filter((message) => {
                 if (message.id === options.resendMessageId) {
                     message.content = text;
                     return true;
@@ -1498,16 +1721,18 @@ const sendMessage = async (options = {}) => {
                 return !edited?.createdAt || !message.createdAt || message.createdAt <= edited.createdAt;
             });
         } else if (isRegenerate) {
-            state.messages = state.messages.filter((message) => message.id !== options.regenerateMessageId);
+            messageList = messageList.filter((message) => message.id !== options.regenerateMessageId);
         } else {
             const userDraft = {
                 role: 'user',
                 content: text || '[File upload]',
                 attachments: publicAttachments
             };
-            state.messages.push(userDraft);
+            messageList.push(userDraft);
             sendMessage.userDraft = userDraft;
         }
+        setMessagesForStreamTarget(streamTarget, messageList);
+
         const assistantDraft = {
             role: 'assistant',
             content: '',
@@ -1521,8 +1746,9 @@ const sendMessage = async (options = {}) => {
             streaming: true,
             loading: true
         };
-        state.messages.push(assistantDraft);
-        renderMessages();
+        messageList.push(assistantDraft);
+        setMessagesForStreamTarget(streamTarget, messageList);
+        renderStreamTarget(streamTarget);
 
         els.messageInput.value = '';
         autoGrowInput();
@@ -1552,13 +1778,14 @@ const sendMessage = async (options = {}) => {
         await streamApi(endpoint, payload, (event, data) => {
             if (event === 'policy') {
                 policyHandled = true;
-                state.messages = state.messages.filter((message) => message !== assistantDraft);
-                state.messages.push({
+                messageList = messageList.filter((message) => message !== assistantDraft);
+                messageList.push({
                     type: 'policy',
                     content: data.policyViolation?.message || 'This prompt is against the Terms of Service.',
                     tosUrl: data.policyViolation?.tosUrl || getTosUrl()
                 });
-                renderMessages();
+                setMessagesForStreamTarget(streamTarget, messageList);
+                renderStreamTarget(streamTarget);
                 return;
             }
 
@@ -1566,7 +1793,7 @@ const sendMessage = async (options = {}) => {
                 assistantDraft.loading = false;
                 assistantDraft.activity.research.push(data.message || 'Researching...');
                 assistantDraft.activity.research = assistantDraft.activity.research.slice(-8);
-                scheduleRenderMessages();
+                if (isStreamTargetActive(streamTarget)) scheduleRenderMessages();
                 return;
             }
 
@@ -1574,7 +1801,7 @@ const sendMessage = async (options = {}) => {
                 assistantDraft.loading = false;
                 assistantDraft.activity.thinking.push(data.message || 'Thinking...');
                 assistantDraft.activity.thinking = assistantDraft.activity.thinking.slice(-6);
-                scheduleRenderMessages();
+                if (isStreamTargetActive(streamTarget)) scheduleRenderMessages();
                 return;
             }
 
@@ -1585,21 +1812,21 @@ const sendMessage = async (options = {}) => {
                         data.source
                     ].slice(-8);
                 }
-                scheduleRenderMessages();
+                if (isStreamTargetActive(streamTarget)) scheduleRenderMessages();
                 return;
             }
 
             if (event === 'sources') {
                 assistantDraft.sources = data.sources || [];
                 assistantDraft.activity.sources = data.sources || assistantDraft.activity.sources;
-                scheduleRenderMessages();
+                if (isStreamTargetActive(streamTarget)) scheduleRenderMessages();
                 return;
             }
 
             if (event === 'delta') {
                 assistantDraft.loading = false;
                 assistantDraft.content += data.delta || '';
-                if (!updateStreamingMessageContent(assistantDraft)) {
+                if (isStreamTargetActive(streamTarget) && !updateStreamingMessageContent(assistantDraft)) {
                     scheduleRenderMessages();
                 }
                 return;
@@ -1615,14 +1842,14 @@ const sendMessage = async (options = {}) => {
         });
 
         if (donePayload?.policyViolation && !policyHandled) {
-            state.messages = state.messages.filter((message) => message !== assistantDraft);
-            state.messages.push({
+            messageList = messageList.filter((message) => message !== assistantDraft);
+            messageList.push({
                 type: 'policy',
                 content: donePayload.policyViolation.message,
                 tosUrl: donePayload.policyViolation.tosUrl
             });
         } else if (donePayload?.policyViolation) {
-            state.messages = state.messages.filter((message) => message !== assistantDraft);
+            messageList = messageList.filter((message) => message !== assistantDraft);
         } else if (donePayload?.message) {
             if (donePayload.userMessageId && sendMessage.userDraft) {
                 sendMessage.userDraft.id = donePayload.userMessageId;
@@ -1633,32 +1860,43 @@ const sendMessage = async (options = {}) => {
                 streaming: false
             });
             processNotebookActionsForMessage(assistantDraft);
+            notifyGenerationDone(streamTarget, assistantDraft);
         } else {
             assistantDraft.loading = false;
             assistantDraft.streaming = false;
         }
+        setMessagesForStreamTarget(streamTarget, messageList);
 
         updateUsage(donePayload?.usage);
         resetTurnstile('message');
         if (isTemporary) {
-            state.temporaryMessages = state.messages;
+            state.temporaryMessages = messageList;
             renderChats();
         } else {
             await fetchChats();
-            if (state.activeChatId) window.location.hash = chatUrl(state.activeChatId);
+            if (isStreamTargetActive(streamTarget) && state.activeChatId) {
+                replaceHashWithoutRouting(chatUrl(state.activeChatId));
+            }
         }
     } catch (error) {
-        state.messages = state.messages.filter((message) => !message.loading && !message.streaming);
-        if (isTemporary) state.temporaryMessages = state.messages;
+        const target = streamTarget || (isTemporary
+            ? { isTemporary: true, chatId: null }
+            : { isTemporary: false, chatId: state.activeChatId });
+        const stream = state.activeStreams.get(streamTargetKey(target));
+        const nextMessages = (stream?.messages || state.messages).filter((message) => !message.loading && !message.streaming);
+        setMessagesForStreamTarget(target, nextMessages);
         resetTurnstile('message');
         if (error.data?.usage) updateUsage(error.data.usage);
         showToast(error.message || 'Ask could not respond.');
     } finally {
-        state.busy = false;
-        els.messages.classList.remove('streaming-render');
-        renderMessages();
+        const target = streamTarget || (isTemporary
+            ? { isTemporary: true, chatId: null }
+            : { isTemporary: false, chatId: state.activeChatId });
+        state.activeStreams.delete(streamTargetKey(target));
+        refreshBusyState();
+        els.messages.classList.toggle('streaming-render', isCurrentViewStreaming());
+        renderStreamTarget(target);
         queueMathTypeset();
-        els.sendButton.disabled = false;
     }
 };
 
@@ -2049,6 +2287,7 @@ document.addEventListener('keydown', (event) => {
         els.settingsMenu.classList.add('hidden');
         els.settingsButton.setAttribute('aria-expanded', 'false');
     }
+    if (!els.notificationPromptModal.classList.contains('hidden')) closeNotificationPrompt();
     if (!els.accountModal.classList.contains('hidden')) closeAccountModal();
     if (!els.authModal.classList.contains('hidden')) closeAuthModal();
     if (state.notebookOpen) closeNotebookPanel();
@@ -2072,6 +2311,43 @@ els.accountModal.addEventListener('click', (event) => {
 });
 els.accountSignOutButton.addEventListener('click', () => {
     signOut().catch((error) => showToast(error.message));
+});
+
+els.notificationsToggle.addEventListener('change', () => {
+    if (!els.notificationsToggle.checked) {
+        setNotificationsEnabled(false);
+        return;
+    }
+
+    const permission = getNotificationPermission();
+    if (permission === 'granted') {
+        setNotificationsEnabled(true);
+        return;
+    }
+
+    setNotificationsEnabled(false);
+    if (permission === 'denied') {
+        showToast('Notifications are blocked in this browser.');
+        return;
+    }
+    if (permission === 'unsupported') {
+        showToast('Browser notifications are not available here.');
+        return;
+    }
+    showNotificationPrompt({ force: true });
+});
+
+els.notificationPromptCloseButton.addEventListener('click', () => closeNotificationPrompt());
+els.notificationLaterButton.addEventListener('click', () => closeNotificationPrompt());
+els.notificationEnableButton.addEventListener('click', () => {
+    requestNotificationPermission().catch(() => {
+        setNotificationsEnabled(false);
+        closeNotificationPrompt();
+        showToast('Notifications could not be enabled.');
+    });
+});
+els.notificationPromptModal.addEventListener('click', (event) => {
+    if (event.target === els.notificationPromptModal) closeNotificationPrompt();
 });
 
 els.passwordForm.addEventListener('submit', async (event) => {
@@ -2109,6 +2385,15 @@ window.addEventListener('hashchange', () => {
         startNewChat();
     });
 });
+window.addEventListener('focus', () => {
+    updateNotificationUi();
+    syncActiveChat().catch(() => {});
+});
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    updateNotificationUi();
+    syncActiveChat().catch(() => {});
+});
 
 els.legalAcceptCheckbox.addEventListener('change', () => {
     els.legalAcceptButton.disabled = !els.legalAcceptCheckbox.checked;
@@ -2137,6 +2422,7 @@ const initializeApp = async () => {
     state.notebook = loadNotebook();
     renderNotebookPanel();
     iconRefresh();
+    updateNotificationUi();
     await fetchConfig();
     await fetchMe();
     await fetchChats();
