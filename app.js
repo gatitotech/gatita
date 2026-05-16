@@ -2,7 +2,7 @@ const LEGACY_API_BASE_KEY = ['CL4', 'NKR_ASK_API_BASE'].join('');
 const STORAGE_PREFIX = 'gatita_ask_';
 const LEGACY_STORAGE_PREFIX = ['cl4', 'nkr_ask_'].join('');
 const API_BASE = window.GATITA_ASK_API_BASE || window[LEGACY_API_BASE_KEY] || 'https://api.clankr.tech/ask-api';
-const LEGAL_VERSION = '2026-05-16';
+const LEGAL_VERSION = '2026-05-15';
 const STREAM_RENDER_INTERVAL_MS = 40;
 const NOTIFICATION_PROMPT_INTERVAL_MS = 30 * 60 * 1000;
 const NOTEBOOK_BLOCK_RE = /<gatita-notebook\b([^>]*)>([\s\S]*?)<\/gatita-notebook>/gi;
@@ -833,6 +833,31 @@ const chooseCustomSelectValue = (kind, nextValue) => {
         select.dispatchEvent(new Event('change', { bubbles: true }));
     }
     closeCustomSelects();
+};
+
+const isSettingsMenuOpen = () => Boolean(
+    els.settingsMenu
+    && !els.settingsMenu.classList.contains('hidden')
+    && !els.settingsMenu.classList.contains('is-closing')
+);
+
+const openSettingsMenu = () => {
+    showWithMotion(els.settingsMenu);
+    els.settingsButton.setAttribute('aria-expanded', 'true');
+};
+
+const closeSettingsMenu = () => {
+    hideWithMotion(els.settingsMenu);
+    els.settingsButton.setAttribute('aria-expanded', 'false');
+    closeCustomSelects();
+};
+
+const toggleSettingsMenu = () => {
+    if (isSettingsMenuOpen()) {
+        closeSettingsMenu();
+    } else {
+        openSettingsMenu();
+    }
 };
 
 const bindCustomSelect = (kind) => {
@@ -2465,24 +2490,12 @@ els.deepResearchToggle.addEventListener('change', () => {
 
 els.settingsButton.addEventListener('click', (event) => {
     event.stopPropagation();
-    const willOpen = els.settingsMenu.classList.contains('hidden') || els.settingsMenu.classList.contains('is-closing');
-    if (willOpen) {
-        showWithMotion(els.settingsMenu);
-    } else {
-        hideWithMotion(els.settingsMenu);
-    }
-    els.settingsButton.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
-    if (!willOpen) closeCustomSelects();
-});
-
-els.settingsMenu.addEventListener('pointerdown', (event) => {
-    event.stopPropagation();
+    toggleSettingsMenu();
 });
 
 els.settingsMenu.addEventListener('click', (event) => {
     const target = event.target;
     if (!target.closest?.('.custom-select-shell')) closeCustomSelects();
-    event.stopPropagation();
 });
 
 els.sidebarToggleButton.addEventListener('click', toggleSidebar);
@@ -2564,15 +2577,13 @@ els.notebookHistory.addEventListener('click', (event) => {
     renderNotebookPanel();
 });
 
-document.addEventListener('click', (event) => {
+document.addEventListener('pointerdown', (event) => {
     const target = event.target;
     if (!target.closest?.('.custom-select-shell')) closeCustomSelects();
-    if (!els.settingsMenu || els.settingsMenu.classList.contains('hidden') || els.settingsMenu.classList.contains('is-closing')) return;
+    if (!isSettingsMenuOpen()) return;
     if (eventIncludesElement(event, els.settingsMenu) || eventIncludesElement(event, els.settingsButton)) return;
-    hideWithMotion(els.settingsMenu);
-    els.settingsButton.setAttribute('aria-expanded', 'false');
-    closeCustomSelects();
-});
+    closeSettingsMenu();
+}, true);
 
 const isEditableShortcutTarget = (target) => Boolean(target?.closest?.(
     'input, textarea, select, [contenteditable="true"], [contenteditable="plaintext-only"]'
@@ -2603,10 +2614,7 @@ document.addEventListener('keydown', (event) => {
     }
     if (event.key !== 'Escape') return;
     closeCustomSelects();
-    if (!els.settingsMenu.classList.contains('hidden')) {
-        hideWithMotion(els.settingsMenu);
-        els.settingsButton.setAttribute('aria-expanded', 'false');
-    }
+    if (isSettingsMenuOpen()) closeSettingsMenu();
     if (!els.notificationPromptModal.classList.contains('hidden')) closeNotificationPrompt();
     if (!els.accountModal.classList.contains('hidden')) closeAccountModal();
     if (!els.authModal.classList.contains('hidden')) closeAuthModal();

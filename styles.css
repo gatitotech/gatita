@@ -696,6 +696,7 @@ body.sidebar-collapsed .chat-sidebar {
     right: 0;
     z-index: 15;
     display: grid;
+    pointer-events: auto;
     width: min(380px, calc(100vw - 28px));
     gap: 10px;
     padding: 12px;
