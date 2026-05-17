@@ -589,6 +589,8 @@ body.sidebar-collapsed .chat-sidebar {
 }
 
 .chat-topbar {
+    position: relative;
+    z-index: 12;
     min-height: 64px;
     padding: 10px 16px;
     background: rgba(31, 20, 14, 0.76);
@@ -694,7 +696,7 @@ body.sidebar-collapsed .chat-sidebar {
     position: absolute;
     top: calc(100% + 10px);
     right: 0;
-    z-index: 15;
+    z-index: 30;
     display: grid;
     pointer-events: auto;
     width: min(380px, calc(100vw - 28px));
@@ -1763,8 +1765,27 @@ body.sidebar-collapsed .chat-sidebar {
     text-decoration: none;
 }
 
-.turnstile-box {
-    min-height: 34px;
+.browser-check-stack {
+    display: grid;
+    flex: 0 0 auto;
+    gap: 6px;
+    min-width: min(240px, 100%);
+}
+
+.browser-check-status {
+    max-width: 280px;
+    color: var(--muted);
+    font-size: 0.74rem;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.browser-check-status.error {
+    color: var(--warn);
+}
+
+.browser-check-status.ready {
+    color: var(--accent-cool);
 }
 
 .notebook-panel {

@@ -148,7 +148,9 @@
                     </button>
                 </form>
                 <div class="verify-row">
-                    <div class="turnstile-box" id="turnstileBox"></div>
+                    <div class="browser-check-stack hidden">
+                        <span class="browser-check-status hidden" id="browserCheckStatus" role="status" aria-live="polite"></span>
+                    </div>
                     <p>Gatita Ask is in beta and may create biased or incorrect information. Verify critical facts. <a href="legal.html">Legal</a></p>
                 </div>
             </section>
@@ -225,7 +227,9 @@
                     <span>Password</span>
                     <input id="authPassword" type="password" autocomplete="current-password" required minlength="8">
                 </label>
-                <div class="turnstile-box auth-turnstile" id="authTurnstileBox"></div>
+                <div class="browser-check-stack auth-browser-check hidden">
+                    <span class="browser-check-status hidden" id="authBrowserCheckStatus" role="status" aria-live="polite"></span>
+                </div>
                 <p class="form-error" id="authError" role="alert"></p>
                 <button class="auth-submit" type="submit">Continue</button>
             </form>
@@ -321,7 +325,7 @@
                 <p>Gatita Ask requires acceptance of the Terms of Service and Privacy Policy before the chat website can be used in this browser.</p>
                 <div class="consent-note">
                     <strong>Required cookies and storage</strong>
-                    <span>Cookies, local storage, Turnstile verification, session tokens, and security checks are required for login, spam prevention, rate limiting, API protection, saved chats, and abuse prevention. They cannot be disabled while using Gatita Ask.</span>
+                    <span>Cookies, local storage, browser verification, session tokens, and rate limits are required for login, spam prevention, API protection, saved chats, and abuse prevention. They cannot be disabled while using Gatita Ask.</span>
                 </div>
                 <label class="consent-check">
                     <input id="legalAcceptCheckbox" type="checkbox">

@@ -2,9 +2,10 @@ const LEGACY_API_BASE_KEY = ['CL4', 'NKR_ASK_API_BASE'].join('');
 const STORAGE_PREFIX = 'gatita_ask_';
 const LEGACY_STORAGE_PREFIX = ['cl4', 'nkr_ask_'].join('');
 const API_BASE = window.GATITA_ASK_API_BASE || window[LEGACY_API_BASE_KEY] || 'https://api.clankr.tech/ask-api';
-const LEGAL_VERSION = '2026-05-15';
+const LEGAL_VERSION = '2026-05-16';
 const STREAM_RENDER_INTERVAL_MS = 40;
 const NOTIFICATION_PROMPT_INTERVAL_MS = 30 * 60 * 1000;
+const BROWSER_CHECK_YIELD_EVERY = 150;
 const NOTEBOOK_BLOCK_RE = /<gatita-notebook\b([^>]*)>([\s\S]*?)<\/gatita-notebook>/gi;
 const NOTEBOOK_PARTIAL_RE = /<gatita-notebook\b[\s\S]*$/i;
 const PROMPT_TEMPLATES = {
@@ -105,8 +106,8 @@ const els = {
     authPassword: document.getElementById('authPassword'),
     authError: document.getElementById('authError'),
     toast: document.getElementById('toast'),
-    turnstileBox: document.getElementById('turnstileBox'),
-    authTurnstileBox: document.getElementById('authTurnstileBox'),
+    browserCheckStatus: document.getElementById('browserCheckStatus'),
+    authBrowserCheckStatus: document.getElementById('authBrowserCheckStatus'),
     templateTray: document.getElementById('templateTray'),
     notebookPanel: document.getElementById('notebookPanel'),
     closeNotebookButton: document.getElementById('closeNotebookButton'),
@@ -137,11 +138,9 @@ const state = {
     guestId: storageGet('guest_id'),
     user: null,
     pendingFiles: [],
-    turnstileToken: '',
-    turnstileVerifiedUntil: 0,
-    authTurnstileToken: '',
-    turnstileWidgetId: null,
-    authTurnstileWidgetId: null,
+    browserProof: null,
+    browserCheckVerifiedUntil: 0,
+    authBrowserProof: null,
     authMode: 'login',
     notebook: null,
     notebookDrafts: new Map(),
@@ -1589,87 +1588,163 @@ const autoGrowInput = () => {
     els.messageInput.style.height = `${Math.min(180, els.messageInput.scrollHeight)}px`;
 };
 
-const loadTurnstileScript = () => new Promise((resolve) => {
-    if (window.turnstile) return resolve();
-    const existing = document.querySelector('script[data-turnstile]');
-    if (existing) {
-        existing.addEventListener('load', resolve, { once: true });
-        return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
-    script.async = true;
-    script.defer = true;
-    script.dataset.turnstile = 'true';
-    script.addEventListener('load', resolve, { once: true });
-    document.head.appendChild(script);
-});
-
-const renderTurnstile = async () => {
-    if (!state.config?.turnstileRequired || !state.config?.turnstileSiteKey) {
-        els.turnstileBox.classList.add('hidden');
-        els.authTurnstileBox.classList.add('hidden');
-        return;
+const getBrowserCheckParts = (kind = 'message') => {
+    if (kind === 'auth') {
+        return {
+            status: els.authBrowserCheckStatus,
+            proofKey: 'authBrowserProof',
+            action: 'ask_auth'
+        };
     }
 
-    await loadTurnstileScript();
-    if (!window.turnstile) return;
-
-    if (state.turnstileWidgetId === null) {
-        state.turnstileWidgetId = window.turnstile.render(els.turnstileBox, {
-            sitekey: state.config.turnstileSiteKey,
-            theme: 'dark',
-            callback: (token) => {
-                state.turnstileToken = token;
-            },
-            'expired-callback': () => {
-                state.turnstileToken = '';
-            },
-            'error-callback': () => {
-                state.turnstileToken = '';
-            }
-        });
-    }
-
-    if (state.authTurnstileWidgetId === null) {
-        state.authTurnstileWidgetId = window.turnstile.render(els.authTurnstileBox, {
-            sitekey: state.config.turnstileSiteKey,
-            theme: 'dark',
-            callback: (token) => {
-                state.authTurnstileToken = token;
-            },
-            'expired-callback': () => {
-                state.authTurnstileToken = '';
-            },
-            'error-callback': () => {
-                state.authTurnstileToken = '';
-            }
-        });
-    }
+    return {
+        status: els.browserCheckStatus,
+        proofKey: 'browserProof',
+        action: 'ask_message'
+    };
 };
 
-const resetTurnstile = (kind = 'message') => {
-    if (!window.turnstile) return;
-    if (kind === 'message' && state.turnstileWidgetId !== null) {
-        state.turnstileToken = '';
-        window.turnstile.reset(state.turnstileWidgetId);
-    }
-    if (kind === 'auth' && state.authTurnstileWidgetId !== null) {
-        state.authTurnstileToken = '';
-        window.turnstile.reset(state.authTurnstileWidgetId);
-    }
+const setBrowserCheckStatus = (kind, message, tone = '') => {
+    const { status } = getBrowserCheckParts(kind);
+    if (!status) return;
+    status.textContent = message || '';
+    status.parentElement?.classList.toggle('hidden', !message);
+    status.classList.toggle('hidden', !message);
+    status.classList.toggle('error', tone === 'error');
+    status.classList.toggle('ready', tone === 'ready');
 };
 
-const hasRecentTurnstilePass = () => Date.now() < Number(state.turnstileVerifiedUntil || 0);
+const clearBrowserCheckStatus = (kind) => setBrowserCheckStatus(kind, '');
 
-const rememberTurnstilePass = () => {
-    const ttl = Math.max(0, Number(state.config?.turnstilePassTtlMs || 0));
+const hideBrowserCheckStatus = (kind) => {
+    const { status } = getBrowserCheckParts(kind);
+    status?.parentElement?.classList.add('hidden');
+    status?.classList.add('hidden');
+};
+
+const renderBrowserCheck = () => {
+    if (!state.config?.browserCheckRequired) {
+        hideBrowserCheckStatus('message');
+        hideBrowserCheckStatus('auth');
+        return;
+    }
+
+    clearBrowserCheckStatus('message');
+    clearBrowserCheckStatus('auth');
+};
+
+const hasRecentBrowserCheckPass = () => Date.now() < Number(state.browserCheckVerifiedUntil || 0);
+
+const rememberBrowserCheckPass = () => {
+    const ttl = Math.max(0, Number(state.config?.browserCheckPassTtlMs || 0));
     if (!ttl) return;
-    state.turnstileVerifiedUntil = Date.now() + Math.max(0, ttl - 15000);
+    state.browserCheckVerifiedUntil = Date.now() + Math.max(0, ttl - 15000);
 };
 
-const forgetTurnstilePass = () => {
-    state.turnstileVerifiedUntil = 0;
+const forgetBrowserCheckPass = () => {
+    state.browserCheckVerifiedUntil = 0;
+};
+
+const resetBrowserCheck = (kind = 'message') => {
+    const parts = getBrowserCheckParts(kind);
+    state[parts.proofKey] = null;
+    clearBrowserCheckStatus(kind);
+};
+
+const yieldBrowserCheck = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+const sha256Hex = async (value) => {
+    const bytes = new TextEncoder().encode(String(value));
+    const hash = await crypto.subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(hash))
+        .map((byte) => byte.toString(16).padStart(2, '0'))
+        .join('');
+};
+
+const countLeadingZeroBits = (hex) => {
+    let count = 0;
+    for (const char of String(hex || '')) {
+        const value = Number.parseInt(char, 16);
+        if (!Number.isFinite(value)) return count;
+        if (value === 0) {
+            count += 4;
+            continue;
+        }
+        return count + Math.clz32(value) - 28;
+    }
+    return count;
+};
+
+const solveBrowserCheck = async (challenge) => {
+    if (!window.crypto?.subtle || !window.TextEncoder) {
+        throw new Error('Security check needs a modern secure browser.');
+    }
+
+    const difficulty = Math.max(0, Number(challenge?.difficulty || 0));
+    const maxAttempts = Math.max(1, Number(challenge?.maxAttempts || 2500000));
+    const expiresAt = Number(challenge?.expiresAt || 0);
+    const action = String(challenge?.action || '');
+    const prefix = `${challenge?.id}:${challenge?.nonce}:${action}:${expiresAt}:`;
+
+    for (let counter = 0; counter <= maxAttempts; counter += 1) {
+        if (expiresAt && Date.now() > expiresAt - 1000) {
+            throw new Error('Security check expired. Please try again.');
+        }
+
+        const hash = await sha256Hex(`${prefix}${counter}`);
+        if (countLeadingZeroBits(hash) >= difficulty) {
+            return {
+                id: challenge.id,
+                nonce: challenge.nonce,
+                action,
+                expiresAt,
+                counter,
+                hash
+            };
+        }
+
+        if (counter > 0 && counter % BROWSER_CHECK_YIELD_EVERY === 0) {
+            await yieldBrowserCheck();
+        }
+    }
+
+    throw new Error('Security check took too long. Please try again.');
+};
+
+const ensureBrowserCheckProof = async (kind = 'message') => {
+    if (!state.config?.browserCheckRequired) return true;
+    if (kind === 'message' && hasRecentBrowserCheckPass()) return true;
+
+    const parts = getBrowserCheckParts(kind);
+    if (state[parts.proofKey]) return true;
+
+    setBrowserCheckStatus(kind, 'Preparing security check...');
+
+    try {
+        const data = await apiFetch('/browser-check/challenge', {
+            method: 'POST',
+            body: JSON.stringify({ action: parts.action })
+        });
+
+        if (!data.required) {
+            clearBrowserCheckStatus(kind);
+            return true;
+        }
+
+        if (!data.challenge?.id || !data.challenge?.nonce) {
+            throw new Error('Security check is unavailable.');
+        }
+
+        state[parts.proofKey] = await solveBrowserCheck(data.challenge);
+        setBrowserCheckStatus(kind, 'Security check complete.', 'ready');
+        clearTimeout(setBrowserCheckStatus[`${kind}Timer`]);
+        setBrowserCheckStatus[`${kind}Timer`] = setTimeout(() => clearBrowserCheckStatus(kind), 1200);
+        return true;
+    } catch (error) {
+        state[parts.proofKey] = null;
+        setBrowserCheckStatus(kind, error.message || 'Security check failed. Please try again.', 'error');
+        throw error;
+    }
 };
 
 const readFilePayload = (file) => new Promise((resolve, reject) => {
@@ -1691,7 +1766,7 @@ const fetchConfig = async () => {
     state.config = data;
     updateUsage(data.usage);
     renderSelects();
-    await renderTurnstile();
+    renderBrowserCheck();
 };
 
 const fetchMe = async () => {
@@ -1948,10 +2023,6 @@ const sendMessage = async (options = {}) => {
     const isRegenerate = Boolean(options.regenerateMessageId);
     const isResend = Boolean(options.resendMessageId);
     if (!text && state.pendingFiles.length === 0 && !isRegenerate) return;
-    if (state.config?.turnstileRequired && !state.turnstileToken && !hasRecentTurnstilePass()) {
-        showToast('Complete verification first.');
-        return;
-    }
     if ((els.researchToggle.checked || els.deepResearchToggle.checked) && !state.user) {
         state.messages.push({
             type: 'policy',
@@ -1960,6 +2031,17 @@ const sendMessage = async (options = {}) => {
         });
         renderMessages();
         return;
+    }
+    if (state.config?.browserCheckRequired && !hasRecentBrowserCheckPass()) {
+        els.sendButton.disabled = true;
+        try {
+            await ensureBrowserCheckProof('message');
+        } catch (error) {
+            els.sendButton.disabled = false;
+            showToast(error.message || 'Security check failed. Please try again.');
+            return;
+        }
+        els.sendButton.disabled = false;
     }
 
     state.busy = true;
@@ -2055,7 +2137,7 @@ const sendMessage = async (options = {}) => {
             displayName: state.user?.displayName || state.user?.email || 'Guest',
             history: temporaryHistory,
             stream: true,
-            turnstileToken: state.turnstileToken
+            browserProof: state.browserProof
         };
 
         let donePayload = null;
@@ -2154,8 +2236,8 @@ const sendMessage = async (options = {}) => {
         setMessagesForStreamTarget(streamTarget, messageList);
 
         updateUsage(donePayload?.usage);
-        rememberTurnstilePass();
-        resetTurnstile('message');
+        rememberBrowserCheckPass();
+        resetBrowserCheck('message');
         if (isTemporary) {
             state.temporaryMessages = messageList;
             renderChats();
@@ -2172,8 +2254,8 @@ const sendMessage = async (options = {}) => {
         const stream = state.activeStreams.get(streamTargetKey(target));
         const nextMessages = (stream?.messages || state.messages).filter((message) => !message.loading && !message.streaming);
         setMessagesForStreamTarget(target, nextMessages);
-        resetTurnstile('message');
-        if (error.status === 403 || error.status === 503) forgetTurnstilePass();
+        resetBrowserCheck('message');
+        if (error.status === 403) forgetBrowserCheckPass();
         if (error.data?.usage) updateUsage(error.data.usage);
         showToast(error.message || 'Ask could not respond.');
     } finally {
@@ -2190,6 +2272,7 @@ const sendMessage = async (options = {}) => {
 
 const openAuthModal = () => {
     showWithMotion(els.authModal);
+    clearBrowserCheckStatus('auth');
     els.authEmail.focus();
 };
 
@@ -2223,18 +2306,22 @@ const setAuthMode = (mode) => {
 };
 
 const submitAuth = async () => {
-    if (state.config?.turnstileRequired && !state.authTurnstileToken) {
-        els.authError.textContent = 'Complete verification first.';
-        return;
+    els.authError.textContent = '';
+    if (state.config?.browserCheckRequired) {
+        try {
+            await ensureBrowserCheckProof('auth');
+        } catch (error) {
+            els.authError.textContent = error.message || 'Security check failed. Please try again.';
+            return;
+        }
     }
 
-    els.authError.textContent = '';
     const isRegister = state.authMode === 'register';
     const payload = {
         email: els.authEmail.value.trim(),
         password: els.authPassword.value,
         displayName: els.authDisplayName.value.trim(),
-        turnstileToken: state.authTurnstileToken
+        browserProof: state.authBrowserProof
     };
 
     try {
@@ -2246,7 +2333,7 @@ const submitAuth = async () => {
         storageSet('token', state.authToken);
         state.user = data.user;
         updateAccount();
-        resetTurnstile('auth');
+        resetBrowserCheck('auth');
         closeAuthModal();
         state.activeChatId = null;
         state.activeSharedToken = '';
@@ -2258,7 +2345,7 @@ const submitAuth = async () => {
         await fetchChats();
         renderMessages();
     } catch (error) {
-        resetTurnstile('auth');
+        resetBrowserCheck('auth');
         els.authError.textContent = error.message || 'Unable to continue.';
     }
 };
