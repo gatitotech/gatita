@@ -1538,7 +1538,7 @@ const renderQueueIndicator = (message) => {
     return `
         <div class="queue-indicator" aria-label="Waiting for response">
             <i data-lucide="hourglass"></i>
-            <span>Waiting</span>
+            <span>In Queue</span>
         </div>
     `;
 };
