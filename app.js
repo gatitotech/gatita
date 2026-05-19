@@ -73,6 +73,14 @@ const els = {
     autoWebToggle: document.getElementById('autoWebToggle'),
     temporaryToggle: document.getElementById('temporaryToggle'),
     deepResearchToggle: document.getElementById('deepResearchToggle'),
+    updatesButton: document.getElementById('updatesButton'),
+    updatesModal: document.getElementById('updatesModal'),
+    closeUpdatesButton: document.getElementById('closeUpdatesButton'),
+    updatesList: document.getElementById('updatesList'),
+    updatesForm: document.getElementById('updatesForm'),
+    updateTitleInput: document.getElementById('updateTitleInput'),
+    updateContentInput: document.getElementById('updateContentInput'),
+    updatesError: document.getElementById('updatesError'),
     notebookToggleButton: document.getElementById('notebookToggleButton'),
     usageText: document.getElementById('usageText'),
     accountName: document.getElementById('accountName'),
@@ -132,6 +140,7 @@ const state = {
     activeSharedToken: '',
     temporaryMode: false,
     temporaryMessages: [],
+    updates: [],
     chatSearch: '',
     editingMessageId: null,
     authToken: storageGet('token'),
@@ -223,11 +232,58 @@ const renderStreamTarget = (target) => {
     renderMessages();
 };
 
+const requestStopForStream = (stream) => {
+    if (!stream || stream.target?.isTemporary) return;
+    const assistant = [...(stream.messages || [])].reverse().find((message) => (
+        message.role === 'assistant'
+        && message.id
+        && (message.streaming || message.loading)
+    ));
+    if (!assistant?.id || !stream.target?.chatId) return;
+    apiFetch(`/chats/${stream.target.chatId}/messages/${assistant.id}/stop`, {
+        method: 'POST',
+        body: JSON.stringify({})
+    }).catch(() => {});
+};
+
+const stopStreamTarget = (target) => {
+    const stream = state.activeStreams.get(streamTargetKey(target));
+    if (!stream) return false;
+    stream.stopped = true;
+    requestStopForStream(stream);
+    stream.controller?.abort();
+    const assistant = [...(stream.messages || [])].reverse().find((message) => message.role === 'assistant' && (message.streaming || message.loading));
+    if (assistant) {
+        assistant.loading = false;
+        assistant.streaming = false;
+        assistant.queueing = false;
+        assistant.content = getVisibleMessageContent(assistant) || 'Stopped.';
+    }
+    setMessagesForStreamTarget(target, stream.messages || []);
+    renderStreamTarget(target);
+    return true;
+};
+
+const stopActiveGeneration = () => {
+    const key = currentStreamKey();
+    const stream = state.activeStreams.get(key);
+    if (stream) {
+        stopStreamTarget(stream.target);
+        return;
+    }
+    for (const item of state.activeStreams.values()) {
+        stopStreamTarget(item.target);
+        return;
+    }
+};
+
 const refreshBusyState = () => {
     state.busy = state.activeStreams.size > 0;
     els.messages?.classList.toggle('streaming-render', isCurrentViewStreaming());
     els.messageScroll?.classList.toggle('streaming-scroll', isCurrentViewStreaming());
-    els.sendButton.disabled = state.busy;
+    els.sendButton.classList.toggle('is-stopping', state.busy);
+    els.sendButton.querySelector('span').textContent = state.busy ? 'Stop' : 'Send';
+    els.sendButton.disabled = false;
 };
 
 const replaceHashWithoutRouting = (hash) => {
@@ -573,11 +629,12 @@ const parseSseChunk = (buffer, onEvent) => {
     return rest;
 };
 
-const streamApi = async (path, payload, onEvent) => {
+const streamApi = async (path, payload, onEvent, options = {}) => {
     const response = await fetch(`${API_BASE}${path}`, {
         method: 'POST',
         headers: createApiHeaders({ Accept: 'text/event-stream' }),
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: options.signal
     });
 
     if (!response.ok) {
@@ -653,6 +710,7 @@ const updateAccount = () => {
     }
     if (state.user) els.usageText.textContent = 'Account menu';
     renderAccountWindow();
+    renderUpdates();
     updateSettingsSummary();
 };
 
@@ -1475,6 +1533,16 @@ const renderActivityPanel = (activity) => {
     `;
 };
 
+const renderQueueIndicator = (message) => {
+    if (!message?.queueing) return '';
+    return `
+        <div class="queue-indicator" aria-label="Waiting for response">
+            <i data-lucide="hourglass"></i>
+            <span>Waiting</span>
+        </div>
+    `;
+};
+
 const renderMessages = () => {
     const viewStreaming = isCurrentViewStreaming();
     const shouldStickToBottom = viewStreaming || isNearMessageBottom();
@@ -1502,6 +1570,7 @@ const renderMessages = () => {
                 <article class="message assistant" data-render-key="${escapeHtml(renderKey)}">
                     <div class="message-stack">
                         ${renderActivityPanel(message.activity)}
+                        ${renderQueueIndicator(message)}
                         <div class="bubble loading" aria-label="Loading">
                             <span class="dot"></span><span class="dot"></span><span class="dot"></span>
                         </div>
@@ -1522,6 +1591,7 @@ const renderMessages = () => {
         const streaming = message.streaming ? '<span class="stream-cursor" aria-hidden="true"></span>' : '';
         const sources = message.role === 'assistant' ? renderSources(message.sources) : '';
         const activity = message.role === 'assistant' ? renderActivityPanel(message.activity) : '';
+        const queue = message.role === 'assistant' ? renderQueueIndicator(message) : '';
         const notebookEmbeds = message.role === 'assistant' && !message.streaming ? renderNotebookEmbeds(message) : '';
         const actions = message.id && !state.activeSharedToken ? `
             <div class="message-actions">
@@ -1537,7 +1607,7 @@ const renderMessages = () => {
 
         return `
             <article class="message ${message.role === 'user' ? 'user' : 'assistant'}${message.streaming ? ' streaming' : ''}${entryClass}" data-message-id="${message.id || ''}" data-render-key="${escapeHtml(renderKey)}">
-                <div class="message-stack">${activity}<div class="bubble">${body}${streaming}${chips}${sources}${notebookEmbeds}</div>${actions}</div>
+                <div class="message-stack">${activity}${queue}<div class="bubble">${body}${streaming}${chips}${sources}${notebookEmbeds}</div>${actions}</div>
             </article>
         `;
     }).join('');
@@ -1549,6 +1619,58 @@ const renderMessages = () => {
             iconRefresh();
         }
     });
+};
+
+const formatUpdateTime = (value) => new Date(Number(value || Date.now())).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+});
+
+const renderUpdates = () => {
+    if (!els.updatesList) return;
+    const canPost = Boolean(state.user?.isAdmin);
+    els.updatesForm?.classList.toggle('hidden', !canPost);
+    els.updatesList.innerHTML = state.updates.length ? state.updates.map((item) => `
+        <article class="update-card">
+            <header>
+                <div>
+                    <span class="mode-label">Update</span>
+                    <h3>${escapeHtml(item.title || 'Update')}</h3>
+                </div>
+                <time datetime="${new Date(Number(item.publishedAt || Date.now())).toISOString()}">${escapeHtml(formatUpdateTime(item.publishedAt))}</time>
+            </header>
+            <div class="markdown-body">${renderMarkdown(item.content || '')}</div>
+        </article>
+    `).join('') : '<p class="empty-list">No updates yet.</p>';
+    highlightCodeBlocks(els.updatesList);
+    iconRefresh();
+    if (state.updates.some((item) => /(\$\$|\\\(|\\\[|\$[^$\n]{1,160}\$)/.test(item.content || ''))) {
+        loadMathJax()
+            .then(() => window.MathJax.typesetPromise([els.updatesList]))
+            .catch(() => {});
+    }
+};
+
+const fetchUpdates = async () => {
+    const data = await apiFetch('/updates');
+    state.updates = data.updates || [];
+    renderUpdates();
+    return data;
+};
+
+const openUpdatesModal = async () => {
+    showWithMotion(els.updatesModal);
+    els.updatesButton?.setAttribute('aria-expanded', 'true');
+    renderUpdates();
+    await fetchUpdates().catch((error) => showToast(error.message || 'Updates could not load.'));
+};
+
+const closeUpdatesModal = () => {
+    hideWithMotion(els.updatesModal);
+    els.updatesButton?.setAttribute('aria-expanded', 'false');
 };
 
 const scheduleRenderMessages = () => {
@@ -2065,10 +2187,13 @@ const sendMessage = async (options = {}) => {
         const chatId = isTemporary ? null : (state.activeChatId || await ensureChat());
         streamTarget = { isTemporary, chatId };
         const streamKey = streamTargetKey(streamTarget);
+        const controller = new AbortController();
         messageList = isTemporary ? state.temporaryMessages : state.messages;
         state.activeStreams.set(streamKey, {
             target: streamTarget,
-            messages: messageList
+            messages: messageList,
+            controller,
+            stopped: false
         });
         refreshBusyState();
         const filesToSend = (isRegenerate || isResend) ? [] : state.pendingFiles;
@@ -2112,7 +2237,8 @@ const sendMessage = async (options = {}) => {
                 sources: []
             },
             streaming: true,
-            loading: true
+            loading: true,
+            queueing: false
         };
         messageList.push(assistantDraft);
         setMessagesForStreamTarget(streamTarget, messageList);
@@ -2157,8 +2283,29 @@ const sendMessage = async (options = {}) => {
                 return;
             }
 
+            if (event === 'message_ids') {
+                if (data.userMessageId && sendMessage.userDraft) {
+                    sendMessage.userDraft.id = data.userMessageId;
+                    sendMessage.userDraft.createdAt = Date.now();
+                }
+                if (data.assistantMessageId) {
+                    assistantDraft.id = data.assistantMessageId;
+                    assistantDraft.createdAt = Date.now();
+                }
+                if (isStreamTargetActive(streamTarget)) scheduleRenderMessages();
+                return;
+            }
+
+            if (event === 'queue_status') {
+                assistantDraft.queueing = data.active !== false;
+                if (data.active) assistantDraft.loading = true;
+                if (isStreamTargetActive(streamTarget)) scheduleRenderMessages();
+                return;
+            }
+
             if (event === 'research_status') {
                 assistantDraft.loading = false;
+                assistantDraft.queueing = false;
                 assistantDraft.activity.research.push(data.message || 'Researching...');
                 assistantDraft.activity.research = assistantDraft.activity.research.slice(-8);
                 if (isStreamTargetActive(streamTarget)) scheduleRenderMessages();
@@ -2167,6 +2314,7 @@ const sendMessage = async (options = {}) => {
 
             if (event === 'thinking_status') {
                 assistantDraft.loading = false;
+                assistantDraft.queueing = false;
                 assistantDraft.activity.thinking.push(data.message || 'Thinking...');
                 assistantDraft.activity.thinking = assistantDraft.activity.thinking.slice(-6);
                 if (isStreamTargetActive(streamTarget)) scheduleRenderMessages();
@@ -2193,6 +2341,7 @@ const sendMessage = async (options = {}) => {
 
             if (event === 'delta') {
                 assistantDraft.loading = false;
+                assistantDraft.queueing = false;
                 assistantDraft.content += data.delta || '';
                 if (isStreamTargetActive(streamTarget) && !updateStreamingMessageContent(assistantDraft)) {
                     scheduleRenderMessages();
@@ -2204,10 +2353,18 @@ const sendMessage = async (options = {}) => {
                 throw Object.assign(new Error(data.error || 'Ask could not respond.'), { data });
             }
 
+            if (event === 'stopped') {
+                assistantDraft.loading = false;
+                assistantDraft.streaming = false;
+                assistantDraft.queueing = false;
+                assistantDraft.content = getVisibleMessageContent(assistantDraft) || 'Stopped.';
+                return;
+            }
+
             if (event === 'done') {
                 donePayload = data;
             }
-        });
+        }, { signal: controller.signal });
 
         if (donePayload?.policyViolation && !policyHandled) {
             messageList = messageList.filter((message) => message !== assistantDraft);
@@ -2225,13 +2382,15 @@ const sendMessage = async (options = {}) => {
             }
             Object.assign(assistantDraft, donePayload.message, {
                 loading: false,
-                streaming: false
+                streaming: false,
+                queueing: false
             });
             processNotebookActionsForMessage(assistantDraft);
             notifyGenerationDone(streamTarget, assistantDraft);
         } else {
             assistantDraft.loading = false;
             assistantDraft.streaming = false;
+            assistantDraft.queueing = false;
         }
         setMessagesForStreamTarget(streamTarget, messageList);
 
@@ -2252,6 +2411,11 @@ const sendMessage = async (options = {}) => {
             ? { isTemporary: true, chatId: null }
             : { isTemporary: false, chatId: state.activeChatId });
         const stream = state.activeStreams.get(streamTargetKey(target));
+        if (stream?.stopped || error.name === 'AbortError') {
+            setMessagesForStreamTarget(target, stream?.messages || state.messages);
+            resetBrowserCheck('message');
+            return;
+        }
         const nextMessages = (stream?.messages || state.messages).filter((message) => !message.loading && !message.streaming);
         setMessagesForStreamTarget(target, nextMessages);
         resetBrowserCheck('message');
@@ -2370,6 +2534,10 @@ const signOut = async () => {
 
 els.composer.addEventListener('submit', (event) => {
     event.preventDefault();
+    if (state.busy) {
+        stopActiveGeneration();
+        return;
+    }
     sendMessage();
 });
 
@@ -2377,6 +2545,10 @@ els.messageInput.addEventListener('input', autoGrowInput);
 els.messageInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
+        if (state.busy) {
+            stopActiveGeneration();
+            return;
+        }
         sendMessage();
     }
 });
@@ -2508,6 +2680,40 @@ els.chatList.addEventListener('click', (event) => {
     window.location.hash = chatUrl(button.dataset.chatId);
 });
 
+els.chatList.addEventListener('pointerover', (event) => {
+    if (event.pointerType === 'touch') return;
+    const row = event.target.closest('.chat-row.has-actions');
+    if (!row || row.contains(event.relatedTarget)) return;
+    clearTimeout(row._actionTimer);
+    row._actionTimer = setTimeout(() => row.classList.add('actions-ready'), 420);
+});
+
+els.chatList.addEventListener('pointerout', (event) => {
+    const row = event.target.closest('.chat-row.has-actions');
+    if (!row || row.contains(event.relatedTarget)) return;
+    clearTimeout(row._actionTimer);
+    row.classList.remove('actions-ready');
+});
+
+els.chatList.addEventListener('pointerdown', (event) => {
+    const row = event.target.closest('.chat-row.has-actions');
+    if (!row || event.target.closest('.chat-actions')) return;
+    if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+    clearTimeout(els.chatList._touchActionTimer);
+    els.chatList._touchActionTimer = setTimeout(() => {
+        document.querySelectorAll('.chat-row.actions-ready').forEach((item) => {
+            if (item !== row) item.classList.remove('actions-ready');
+        });
+        row.classList.add('actions-ready');
+    }, 520);
+});
+
+['pointerup', 'pointercancel', 'pointerleave'].forEach((eventName) => {
+    els.chatList.addEventListener(eventName, () => {
+        clearTimeout(els.chatList._touchActionTimer);
+    });
+});
+
 els.newChatButton.addEventListener('click', startNewChat);
 
 els.modelSelect.addEventListener('change', () => {
@@ -2586,6 +2792,32 @@ els.settingsMenu.addEventListener('click', (event) => {
 });
 
 els.sidebarToggleButton.addEventListener('click', toggleSidebar);
+els.updatesButton.addEventListener('click', () => {
+    openUpdatesModal();
+});
+els.closeUpdatesButton.addEventListener('click', closeUpdatesModal);
+els.updatesModal.addEventListener('click', (event) => {
+    if (event.target === els.updatesModal) closeUpdatesModal();
+});
+els.updatesForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    els.updatesError.textContent = '';
+    try {
+        await apiFetch('/updates', {
+            method: 'POST',
+            body: JSON.stringify({
+                title: els.updateTitleInput.value,
+                content: els.updateContentInput.value
+            })
+        });
+        els.updateTitleInput.value = '';
+        els.updateContentInput.value = '';
+        await fetchUpdates();
+        showToast('Update posted.');
+    } catch (error) {
+        els.updatesError.textContent = error.message || 'Could not post update.';
+    }
+});
 els.notebookToggleButton.addEventListener('click', () => {
     if (state.notebookOpen) {
         closeNotebookPanel();
@@ -2667,6 +2899,9 @@ els.notebookHistory.addEventListener('click', (event) => {
 document.addEventListener('pointerdown', (event) => {
     const target = event.target;
     if (!target.closest?.('.custom-select-shell')) closeCustomSelects();
+    if (!target.closest?.('.chat-row')) {
+        document.querySelectorAll('.chat-row.actions-ready').forEach((row) => row.classList.remove('actions-ready'));
+    }
     if (!isSettingsMenuOpen()) return;
     if (eventIncludesElement(event, els.settingsMenu) || eventIncludesElement(event, els.settingsButton)) return;
     closeSettingsMenu();
@@ -2703,6 +2938,7 @@ document.addEventListener('keydown', (event) => {
     closeCustomSelects();
     if (isSettingsMenuOpen()) closeSettingsMenu();
     if (!els.notificationPromptModal.classList.contains('hidden')) closeNotificationPrompt();
+    if (!els.updatesModal.classList.contains('hidden')) closeUpdatesModal();
     if (!els.accountModal.classList.contains('hidden')) closeAccountModal();
     if (!els.authModal.classList.contains('hidden')) closeAuthModal();
     if (state.notebookOpen) closeNotebookPanel();
