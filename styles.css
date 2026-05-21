@@ -1940,6 +1940,11 @@ body.sidebar-collapsed .chat-sidebar {
     background: rgba(229, 177, 109, 0.11);
 }
 
+.notebook-files button.has-change {
+    border-color: rgba(143, 174, 154, 0.5);
+    box-shadow: inset 3px 0 0 rgba(143, 174, 154, 0.72);
+}
+
 .notebook-files svg {
     width: 17px;
     height: 17px;
@@ -1963,17 +1968,24 @@ body.sidebar-collapsed .chat-sidebar {
 .notebook-workspace {
     display: grid;
     min-height: 0;
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr);
     padding: 14px;
 }
 
-.notebook-tabs {
+.notebook-change-tabs {
     display: flex;
     gap: 7px;
     margin-bottom: 10px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
 }
 
-.notebook-tab {
+.notebook-change-tab {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 7px;
     min-height: 32px;
     padding: 0 10px;
     border: 1px solid var(--line);
@@ -1990,13 +2002,31 @@ body.sidebar-collapsed .chat-sidebar {
         color var(--duration-base) var(--ease-standard);
 }
 
-.notebook-tab.active {
+.notebook-change-tab span {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.notebook-change-tab strong {
+    color: var(--muted);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+}
+
+.notebook-change-tab svg {
+    width: 14px;
+    height: 14px;
+}
+
+.notebook-change-tab.active {
     border-color: rgba(229, 177, 109, 0.42);
     color: var(--accent-2);
     background: rgba(229, 177, 109, 0.1);
 }
 
-.notebook-tab:hover {
+.notebook-change-tab:hover {
     transform: translateY(-1px);
     border-color: rgba(229, 177, 109, 0.28);
     color: var(--text);
@@ -2014,8 +2044,7 @@ body.sidebar-collapsed .chat-sidebar {
 
 .notebook-editor,
 .notebook-preview,
-.notebook-diff,
-.notebook-history {
+.notebook-ai-diff {
     min-height: 0;
     border: 1px solid var(--line);
     border-radius: var(--radius);
@@ -2028,6 +2057,8 @@ body.sidebar-collapsed .chat-sidebar {
     resize: none;
     padding: 12px;
     color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.86rem;
     outline: 0;
     line-height: 1.55;
 }
@@ -2035,6 +2066,10 @@ body.sidebar-collapsed .chat-sidebar {
 .notebook-preview {
     overflow-y: auto;
     padding: 14px;
+}
+
+.notebook-preview pre {
+    margin: 0;
 }
 
 .notebook-preview .markdown-body {
@@ -2046,50 +2081,10 @@ body.sidebar-collapsed .chat-sidebar {
     margin-top: 0;
 }
 
-.notebook-history {
-    display: grid;
-    align-content: start;
-    gap: 8px;
-    overflow-y: auto;
-    padding: 10px;
-}
-
-.notebook-history button {
-    display: grid;
-    gap: 3px;
-    padding: 9px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    color: var(--text-soft);
-    background: rgba(255, 255, 255, 0.04);
-    text-align: left;
-    cursor: pointer;
-    transition:
-        transform var(--duration-base) var(--ease-emphasized),
-        border-color var(--duration-base) var(--ease-standard),
-        background var(--duration-base) var(--ease-standard),
-        color var(--duration-base) var(--ease-standard);
-}
-
-.notebook-history button:hover {
-    transform: translateY(-1px);
-    border-color: rgba(229, 177, 109, 0.28);
-    background: rgba(255, 255, 255, 0.06);
-}
-
-.notebook-history button.active {
-    border-color: rgba(229, 177, 109, 0.42);
-    color: var(--text);
-}
-
-.notebook-history span {
-    color: var(--muted);
-    font-size: 0.76rem;
-}
-
-.notebook-diff {
+.notebook-ai-diff {
     overflow: auto;
-    margin: 0;
+    max-height: 180px;
+    margin: 0 0 10px;
     padding: 12px;
     color: var(--text-soft);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -2134,6 +2129,79 @@ body.sidebar-collapsed .chat-sidebar {
 
 .account-window {
     width: min(520px, 100%);
+}
+
+.action-window {
+    width: min(560px, 100%);
+}
+
+.action-form {
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+}
+
+.action-message {
+    margin: 0;
+    color: var(--text-soft);
+    line-height: 1.55;
+}
+
+.action-form label {
+    display: grid;
+    gap: 6px;
+    color: var(--text-soft);
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+
+.action-form input,
+.action-form textarea {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    outline: 0;
+    color: var(--text);
+    background: rgba(0, 0, 0, 0.2);
+    transition:
+        border-color var(--duration-base) var(--ease-standard),
+        background var(--duration-base) var(--ease-standard),
+        box-shadow var(--duration-base) var(--ease-standard);
+}
+
+.action-form input {
+    height: 42px;
+    padding: 0 11px;
+}
+
+.action-form textarea {
+    min-height: 180px;
+    max-height: min(52vh, 460px);
+    padding: 11px;
+    resize: vertical;
+    line-height: 1.55;
+}
+
+.action-form input:focus,
+.action-form textarea:focus {
+    border-color: var(--line-strong);
+    box-shadow: 0 0 0 3px rgba(229, 177, 109, 0.13);
+}
+
+.action-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.action-buttons .auth-submit {
+    width: auto;
+    min-width: 120px;
+    padding: 0 18px;
+}
+
+.auth-submit.danger-action {
+    background: linear-gradient(135deg, var(--danger), #8f2f1e);
 }
 
 .updates-window {
@@ -3131,7 +3199,7 @@ body.sidebar-collapsed .chat-sidebar {
         max-width: none;
     }
 
-    .notebook-tabs {
+    .notebook-change-tabs {
         overflow-x: auto;
         padding-bottom: 2px;
         scrollbar-width: none;
@@ -3295,6 +3363,8 @@ body.sidebar-collapsed .chat-sidebar {
     }
 
     .composer textarea,
+    .action-form input,
+    .action-form textarea,
     .auth-form input,
     .password-form input,
     .chat-search-wrap input {

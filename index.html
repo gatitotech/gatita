@@ -178,6 +178,14 @@
                     <i data-lucide="file-plus-2"></i>
                     <span>New note</span>
                 </button>
+                <button class="small-btn" id="copyNotebookButton" type="button">
+                    <i data-lucide="copy"></i>
+                    <span>Copy</span>
+                </button>
+                <button class="small-btn" id="editNotebookButton" type="button">
+                    <i data-lucide="pencil"></i>
+                    <span>Edit</span>
+                </button>
                 <button class="small-btn" id="saveNotebookButton" type="button">
                     <i data-lucide="save"></i>
                     <span>Save</span>
@@ -189,22 +197,43 @@
                 <nav class="notebook-files" id="notebookFileList" aria-label="Chat notes"></nav>
 
                 <section class="notebook-workspace">
-                    <div class="notebook-tabs" role="tablist">
-                        <button class="notebook-tab active" type="button" data-notebook-tab="editor">Editor</button>
-                        <button class="notebook-tab" type="button" data-notebook-tab="preview">Preview</button>
-                        <button class="notebook-tab" type="button" data-notebook-tab="history">History</button>
-                        <button class="notebook-tab" type="button" data-notebook-tab="diff">Diff</button>
-                    </div>
-
+                    <div class="notebook-change-tabs hidden" id="notebookChangeTabs" role="tablist" aria-label="AI notebook changes"></div>
+                    <pre class="notebook-ai-diff hidden" id="notebookAiDiff"></pre>
                     <div class="notebook-meta" id="notebookMeta">No file selected</div>
                     <textarea class="notebook-editor" id="notebookEditor" spellcheck="true" placeholder="Chat notes and AI-created notes appear here."></textarea>
                     <div class="notebook-preview hidden" id="notebookPreview"></div>
-                    <div class="notebook-history hidden" id="notebookHistory"></div>
-                    <pre class="notebook-diff hidden" id="notebookDiff"></pre>
                 </section>
             </div>
         </aside>
     </main>
+
+    <div class="modal-backdrop hidden" id="actionModal" role="dialog" aria-modal="true" aria-labelledby="actionModalTitle">
+        <section class="auth-modal action-window">
+            <div class="modal-head">
+                <h2 id="actionModalTitle">Action</h2>
+                <button class="icon-btn" id="actionModalCloseButton" type="button" aria-label="Close">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+
+            <form class="action-form" id="actionModalForm">
+                <p class="action-message" id="actionModalMessage"></p>
+                <label class="hidden" id="actionModalInputWrap">
+                    <span id="actionModalInputLabel">Name</span>
+                    <input id="actionModalInput" type="text">
+                </label>
+                <label class="hidden" id="actionModalTextareaWrap">
+                    <span id="actionModalTextareaLabel">Text</span>
+                    <textarea id="actionModalTextarea" rows="8"></textarea>
+                </label>
+                <p class="form-error" id="actionModalError" role="alert"></p>
+                <div class="action-buttons">
+                    <button class="small-btn" id="actionModalCancelButton" type="button">Cancel</button>
+                    <button class="auth-submit" id="actionModalSubmitButton" type="submit">Save</button>
+                </div>
+            </form>
+        </section>
+    </div>
 
     <div class="modal-backdrop hidden" id="authModal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
         <section class="auth-modal">
