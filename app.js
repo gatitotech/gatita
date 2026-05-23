@@ -2,7 +2,7 @@ const LEGACY_API_BASE_KEY = ['CL4', 'NKR_ASK_API_BASE'].join('');
 const STORAGE_PREFIX = 'gatita_ask_';
 const LEGACY_STORAGE_PREFIX = ['cl4', 'nkr_ask_'].join('');
 const API_BASE = window.GATITA_ASK_API_BASE || window[LEGACY_API_BASE_KEY] || 'https://api.clankr.tech/ask-api';
-const LEGAL_VERSION = '2026-05-16';
+const LEGAL_VERSION = '2026-05-23';
 const STREAM_RENDER_INTERVAL_MS = 40;
 const NOTIFICATION_PROMPT_INTERVAL_MS = 30 * 60 * 1000;
 const BROWSER_CHECK_YIELD_EVERY = 150;
@@ -94,6 +94,7 @@ const els = {
     sendButton: document.getElementById('sendButton'),
     newChatButton: document.getElementById('newChatButton'),
     settingsButton: document.getElementById('settingsButton'),
+    settingsWrap: document.querySelector('.settings-wrap'),
     settingsMenu: document.getElementById('settingsMenu'),
     settingsModelName: document.getElementById('settingsModelName'),
     settingsSummary: document.getElementById('settingsSummary'),
@@ -135,6 +136,10 @@ const els = {
     currentPassword: document.getElementById('currentPassword'),
     newPassword: document.getElementById('newPassword'),
     passwordError: document.getElementById('passwordError'),
+    deleteAccountForm: document.getElementById('deleteAccountForm'),
+    deleteAccountPassword: document.getElementById('deleteAccountPassword'),
+    deleteAccountError: document.getElementById('deleteAccountError'),
+    accountDeletionStatus: document.getElementById('accountDeletionStatus'),
     notificationPromptModal: document.getElementById('notificationPromptModal'),
     notificationPromptCloseButton: document.getElementById('notificationPromptCloseButton'),
     notificationEnableButton: document.getElementById('notificationEnableButton'),
@@ -860,6 +865,13 @@ const renderAccountWindow = () => {
     els.accountDeepLimit.textContent = state.user
         ? `${deepRemaining}/${deepLimit} left today`
         : 'Sign in required';
+    const deletionScheduledAt = Number(state.user?.deletionScheduledAt || 0);
+    if (els.accountDeletionStatus) {
+        els.accountDeletionStatus.classList.toggle('hidden', !deletionScheduledAt);
+        els.accountDeletionStatus.textContent = deletionScheduledAt
+            ? `Deletion scheduled for ${formatAccountDeletionTime(deletionScheduledAt)}. Sign in before then to cancel it.`
+            : '';
+    }
     updateNotificationUi();
 };
 
@@ -871,7 +883,7 @@ const updateAccount = () => {
 
     if (state.user) {
         els.accountName.textContent = state.user.displayName || state.user.email || 'Account';
-        els.accountButton.textContent = 'Account';
+        els.accountButton.textContent = 'Account settings';
         setGuestLockedToggle(els.thinkingToggle, false);
         setGuestLockedToggle(els.researchToggle, false);
         setGuestLockedToggle(els.autoWebToggle, false);
@@ -1082,7 +1094,23 @@ const isSettingsMenuOpen = () => Boolean(
     && !els.settingsMenu.classList.contains('is-closing')
 );
 
+const shouldPortalSettingsMenu = () => window.matchMedia?.('(max-width: 860px)')?.matches || window.innerWidth <= 860;
+
+const syncSettingsMenuPortal = () => {
+    if (!els.settingsMenu || !els.settingsWrap) return;
+    const shouldPortal = shouldPortalSettingsMenu();
+    els.settingsMenu.classList.toggle('settings-menu-portal', shouldPortal);
+    if (shouldPortal && els.settingsMenu.parentElement !== document.body) {
+        document.body.appendChild(els.settingsMenu);
+        return;
+    }
+    if (!shouldPortal && els.settingsMenu.parentElement !== els.settingsWrap) {
+        els.settingsWrap.appendChild(els.settingsMenu);
+    }
+};
+
 const openSettingsMenu = () => {
+    syncSettingsMenuPortal();
     showWithMotion(els.settingsMenu);
     els.settingsButton.setAttribute('aria-expanded', 'true');
 };
@@ -1967,6 +1995,14 @@ const formatUpdateTime = (value) => new Date(Number(value || Date.now())).toLoca
     minute: '2-digit'
 });
 
+const formatAccountDeletionTime = (value) => new Date(Number(value || Date.now())).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+});
+
 const renderUpdates = () => {
     if (!els.updatesList) return;
     const canPost = Boolean(state.user?.isAdmin);
@@ -2823,7 +2859,27 @@ const closeAccountModal = () => {
     hideWithMotion(els.accountModal);
 };
 
+const isCompactViewport = () => window.matchMedia?.('(max-width: 860px)')?.matches || window.innerWidth <= 860;
+
+const closeSidebarOnCompact = () => {
+    if (!isCompactViewport()) return;
+    document.body.classList.add('sidebar-collapsed');
+    delete document.body.dataset.sidebarUserToggled;
+};
+
+const syncResponsiveShell = () => {
+    if (!isCompactViewport()) {
+        document.body.classList.remove('sidebar-collapsed');
+        delete document.body.dataset.sidebarUserToggled;
+        return;
+    }
+    if (!document.body.dataset.sidebarUserToggled) {
+        document.body.classList.add('sidebar-collapsed');
+    }
+};
+
 const toggleSidebar = () => {
+    document.body.dataset.sidebarUserToggled = '1';
     document.body.classList.toggle('sidebar-collapsed');
 };
 
@@ -2877,14 +2933,16 @@ const submitAuth = async () => {
         await fetchMe();
         await fetchChats();
         renderMessages();
+        if (data.deletionCanceled) {
+            showToast('Account deletion canceled.');
+        }
     } catch (error) {
         resetBrowserCheck('auth');
         els.authError.textContent = error.message || 'Unable to continue.';
     }
 };
 
-const signOut = async () => {
-    await apiFetch('/auth/logout', { method: 'POST', body: JSON.stringify({}) }).catch(() => {});
+const resetSignedOutState = async () => {
     state.authToken = '';
     state.user = null;
     state.activeChatId = null;
@@ -2899,6 +2957,11 @@ const signOut = async () => {
     await fetchMe();
     await fetchChats();
     renderMessages();
+};
+
+const signOut = async () => {
+    await apiFetch('/auth/logout', { method: 'POST', body: JSON.stringify({}) }).catch(() => {});
+    await resetSignedOutState();
 };
 
 els.composer.addEventListener('submit', (event) => {
@@ -3025,11 +3088,13 @@ els.chatList.addEventListener('click', (event) => {
     const temporaryButton = event.target.closest('[data-temporary-chat]');
     if (temporaryButton) {
         startTemporaryChat();
+        closeSidebarOnCompact();
         return;
     }
     const newButton = event.target.closest('[data-new-chat]');
     if (newButton) {
         startNewChat();
+        closeSidebarOnCompact();
         return;
     }
     const action = event.target.closest('.chat-actions button');
@@ -3085,6 +3150,7 @@ els.chatList.addEventListener('click', (event) => {
     const button = event.target.closest('[data-chat-id]');
     if (!button) return;
     window.location.hash = chatUrl(button.dataset.chatId);
+    closeSidebarOnCompact();
 });
 
 els.chatList.addEventListener('pointerover', (event) => {
@@ -3121,7 +3187,10 @@ els.chatList.addEventListener('pointerdown', (event) => {
     });
 });
 
-els.newChatButton.addEventListener('click', startNewChat);
+els.newChatButton.addEventListener('click', () => {
+    startNewChat();
+    closeSidebarOnCompact();
+});
 
 els.modelSelect.addEventListener('change', () => {
     storageSet('model', els.modelSelect.value);
@@ -3367,6 +3436,13 @@ els.notebookFileList.addEventListener('click', (event) => {
 
 document.addEventListener('pointerdown', (event) => {
     const target = event.target;
+    const sidebar = els.chatList?.closest('.chat-sidebar');
+    if (isCompactViewport()
+        && !document.body.classList.contains('sidebar-collapsed')
+        && !eventIncludesElement(event, sidebar)
+        && !eventIncludesElement(event, els.sidebarToggleButton)) {
+        closeSidebarOnCompact();
+    }
     if (!target.closest?.('.custom-select-shell')) closeCustomSelects();
     if (!target.closest?.('.chat-row')) {
         document.querySelectorAll('.chat-row.actions-ready').forEach((row) => row.classList.remove('actions-ready'));
@@ -3500,6 +3576,39 @@ els.passwordForm.addEventListener('submit', async (event) => {
     }
 });
 
+els.deleteAccountForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    els.deleteAccountError.textContent = '';
+    if (!els.deleteAccountPassword.value) {
+        els.deleteAccountError.textContent = 'Enter your current password to schedule deletion.';
+        els.deleteAccountPassword.focus();
+        return;
+    }
+
+    const confirmed = await openActionModal({
+        title: 'Schedule Account Deletion',
+        message: 'Your account, saved chats, and sessions will be deleted after 7 days. Signing back in before then cancels the deletion.',
+        kind: 'confirm',
+        confirmText: 'Schedule deletion',
+        danger: true
+    });
+    if (!confirmed) return;
+
+    try {
+        const data = await apiFetch('/auth/delete', {
+            method: 'POST',
+            body: JSON.stringify({
+                password: els.deleteAccountPassword.value
+            })
+        });
+        els.deleteAccountPassword.value = '';
+        showToast(`Account deletion scheduled for ${formatAccountDeletionTime(data.deletionScheduledAt)}. Sign in before then to cancel.`);
+        await resetSignedOutState();
+    } catch (error) {
+        els.deleteAccountError.textContent = error.message || 'Could not schedule account deletion.';
+    }
+});
+
 document.querySelectorAll('.auth-tab').forEach((button) => {
     button.addEventListener('click', () => setAuthMode(button.dataset.authMode));
 });
@@ -3552,9 +3661,19 @@ const showLegalGate = () => {
     iconRefresh();
 };
 
+window.addEventListener('resize', () => {
+    clearTimeout(syncResponsiveShell.resizeTimer);
+    syncResponsiveShell.resizeTimer = setTimeout(() => {
+        syncResponsiveShell();
+        syncSettingsMenuPortal();
+    }, 120);
+});
+
 const initializeApp = async () => {
     ensureGuestId();
     state.notebook = loadNotebook();
+    syncResponsiveShell();
+    syncSettingsMenuPortal();
     renderNotebookPanel();
     iconRefresh();
     updateNotificationUi();

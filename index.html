@@ -61,14 +61,14 @@
                         <i data-lucide="panel-left"></i>
                     </button>
                     <div class="mode-summary">
-                        <span class="mode-label">Current setup</span>
+                        <span class="mode-label">Model setup</span>
                         <strong class="settings-model-name" id="settingsModelName">Loading...</strong>
                         <div class="settings-chip-row" id="settingsSummary" aria-label="Enabled settings"></div>
                     </div>
                     <div class="settings-wrap">
-                        <button class="settings-button" id="settingsButton" type="button" aria-expanded="false" aria-controls="settingsMenu">
+                        <button class="settings-button" id="settingsButton" type="button" aria-label="Model settings" aria-expanded="false" aria-controls="settingsMenu">
                             <i data-lucide="sliders-horizontal"></i>
-                            <span>Settings</span>
+                            <span>Model settings</span>
                         </button>
                         <div class="settings-menu hidden" id="settingsMenu">
                             <div class="select-shell custom-select-shell" data-custom-select="model">
@@ -278,7 +278,7 @@
     <div class="modal-backdrop hidden" id="accountModal" role="dialog" aria-modal="true" aria-labelledby="accountTitle">
         <section class="auth-modal account-window">
             <div class="modal-head">
-                <h2 id="accountTitle">Account</h2>
+                <h2 id="accountTitle">Account settings</h2>
                 <button class="icon-btn" id="closeAccountButton" type="button" aria-label="Close">
                     <i data-lucide="x"></i>
                 </button>
@@ -328,6 +328,21 @@
                     </label>
                     <p class="form-error" id="passwordError" role="alert"></p>
                     <button class="auth-submit" type="submit">Change password</button>
+                </form>
+
+                <form class="delete-account-form" id="deleteAccountForm">
+                    <div class="account-danger-card">
+                        <span class="account-label">Danger zone</span>
+                        <strong>Delete account</strong>
+                        <p>Schedules your account and saved chats for deletion. Final deletion happens after 7 days unless you sign back in first.</p>
+                    </div>
+                    <label>
+                        <span>Current password</span>
+                        <input id="deleteAccountPassword" type="password" autocomplete="current-password">
+                    </label>
+                    <p class="account-deletion-status hidden" id="accountDeletionStatus"></p>
+                    <p class="form-error" id="deleteAccountError" role="alert"></p>
+                    <button class="small-btn danger-action" id="deleteAccountButton" type="submit">Schedule account deletion</button>
                 </form>
             </div>
         </section>
