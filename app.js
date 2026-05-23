@@ -165,6 +165,7 @@ const els = {
     notebookEditor: document.getElementById('notebookEditor'),
     notebookPreview: document.getElementById('notebookPreview'),
     notebookMeta: document.getElementById('notebookMeta'),
+    notebookWorkspace: document.querySelector('.notebook-workspace'),
     newNotebookFileButton: document.getElementById('newNotebookFileButton'),
     copyNotebookButton: document.getElementById('copyNotebookButton'),
     editNotebookButton: document.getElementById('editNotebookButton'),
@@ -834,7 +835,13 @@ const streamApi = async (path, payload, onEvent, options = {}) => {
 const updateUsage = (usage) => {
     if (!usage) return;
     state.usage = usage;
-    els.usageText.textContent = state.user ? 'Account menu' : 'Guest mode';
+    if (state.user) {
+        els.usageText.textContent = 'Free';
+    } else if (usage.dailyLimit) {
+        els.usageText.textContent = `${usage.dailyRemaining}/${usage.dailyLimit} guest messages left`;
+    } else {
+        els.usageText.textContent = 'Guest';
+    }
     renderAccountWindow();
 };
 
@@ -857,25 +864,35 @@ const renderAccountWindow = () => {
 };
 
 const updateAccount = () => {
+    const setGuestLockedToggle = (input, locked) => {
+        input.disabled = locked;
+        input.closest('.thinking-toggle')?.classList.toggle('disabled', locked);
+    };
+
     if (state.user) {
         els.accountName.textContent = state.user.displayName || state.user.email || 'Account';
         els.accountButton.textContent = 'Account';
-        els.researchToggle.disabled = false;
-        els.deepResearchToggle.disabled = false;
-        els.researchToggle.closest('.research-control')?.classList.remove('disabled');
-        els.deepResearchToggle.closest('.research-control')?.classList.remove('disabled');
+        setGuestLockedToggle(els.thinkingToggle, false);
+        setGuestLockedToggle(els.researchToggle, false);
+        setGuestLockedToggle(els.autoWebToggle, false);
+        setGuestLockedToggle(els.deepResearchToggle, false);
     } else {
         els.accountName.textContent = 'Guest';
         els.accountButton.textContent = 'Sign in';
-        els.usageText.textContent = 'Guest mode';
+        if (state.usage?.dailyLimit) {
+            els.usageText.textContent = `${state.usage.dailyRemaining}/${state.usage.dailyLimit} guest messages left`;
+        } else {
+            els.usageText.textContent = 'Guest mode';
+        }
+        els.thinkingToggle.checked = false;
         els.researchToggle.checked = false;
+        els.autoWebToggle.checked = false;
         els.deepResearchToggle.checked = false;
-        els.researchToggle.disabled = true;
-        els.deepResearchToggle.disabled = true;
-        els.researchToggle.closest('.research-control')?.classList.add('disabled');
-        els.deepResearchToggle.closest('.research-control')?.classList.add('disabled');
+        setGuestLockedToggle(els.thinkingToggle, true);
+        setGuestLockedToggle(els.researchToggle, true);
+        setGuestLockedToggle(els.autoWebToggle, true);
+        setGuestLockedToggle(els.deepResearchToggle, true);
     }
-    if (state.user) els.usageText.textContent = 'Account menu';
     renderAccountWindow();
     renderUpdates();
     updateSettingsSummary();
@@ -900,9 +917,9 @@ const renderSelects = () => {
 
     els.modelSelect.value = models.some((model) => model.id === savedModel) ? savedModel : state.config?.defaultModelId || '';
     els.personalitySelect.value = personalities.some((item) => item.id === savedPersonality) ? savedPersonality : 'smart';
-    els.thinkingToggle.checked = savedThinking;
+    els.thinkingToggle.checked = savedThinking && Boolean(state.user);
     els.researchToggle.checked = savedResearch && Boolean(state.user);
-    els.autoWebToggle.checked = savedAutoWeb;
+    els.autoWebToggle.checked = savedAutoWeb && Boolean(state.user);
     els.temporaryToggle.checked = state.temporaryMode;
     els.deepResearchToggle.checked = savedDeepResearch && Boolean(state.user);
     renderCustomSelect('model');
@@ -1380,8 +1397,10 @@ const formatNotebookTime = (value) => new Date(Number(value || Date.now())).toLo
 });
 
 const buildSimpleDiff = (oldText = '', newText = '') => {
-    const oldLines = String(oldText).split('\n');
-    const newLines = String(newText).split('\n');
+    const oldValue = String(oldText);
+    const newValue = String(newText);
+    const oldLines = oldValue ? oldValue.split('\n') : [];
+    const newLines = newValue ? newValue.split('\n') : [];
     const max = Math.max(oldLines.length, newLines.length);
     const rows = [];
     for (let index = 0; index < max; index += 1) {
@@ -1395,6 +1414,67 @@ const buildSimpleDiff = (oldText = '', newText = '') => {
         }
     }
     return rows.join('\n') || 'No differences.';
+};
+
+const renderNotebookDiff = (change) => {
+    const lines = String(change?.diff || 'No differences.').split('\n');
+    let oldLine = 1;
+    let newLine = 1;
+    let additions = 0;
+    let deletions = 0;
+
+    const rows = lines.map((line) => {
+        const raw = String(line || '');
+        const marker = raw.slice(0, 2);
+        let type = 'meta';
+        let sign = '';
+        let oldNumber = '';
+        let newNumber = '';
+        let text = raw;
+
+        if (marker === '+ ') {
+            type = 'add';
+            sign = '+';
+            text = raw.slice(2);
+            newNumber = newLine;
+            newLine += 1;
+            additions += 1;
+        } else if (marker === '- ') {
+            type = 'remove';
+            sign = '-';
+            text = raw.slice(2);
+            oldNumber = oldLine;
+            oldLine += 1;
+            deletions += 1;
+        } else if (marker === '  ') {
+            type = 'same';
+            sign = ' ';
+            text = raw.slice(2);
+            oldNumber = oldLine;
+            newNumber = newLine;
+            oldLine += 1;
+            newLine += 1;
+        }
+
+        return `
+            <span class="diff-row diff-${type}">
+                <span class="diff-line-no">${oldNumber}</span>
+                <span class="diff-line-no">${newNumber}</span>
+                <span class="diff-marker">${escapeHtml(sign)}</span>
+                <span class="diff-code">${escapeHtml(text)}</span>
+            </span>
+        `;
+    }).join('');
+
+    return `
+        <div class="diff-card">
+            <div class="diff-head">
+                <span>${escapeHtml(change?.path || 'Notebook diff')}</span>
+                <strong><span>+${additions}</span><span>-${deletions}</span></strong>
+            </div>
+            <code class="diff-grid">${rows}</code>
+        </div>
+    `;
 };
 
 const renderNotebookFileContent = (file, content) => {
@@ -1423,6 +1503,8 @@ const renderNotebookPanel = () => {
     const activeChange = pendingChanges.find((change) => change.id === state.notebook.activeChangeId) || pendingChanges[0] || null;
     if (activeChange && state.notebook.activeChangeId !== activeChange.id) state.notebook.activeChangeId = activeChange.id;
 
+    els.notebookWorkspace?.classList.toggle('is-editing', editing);
+    els.notebookWorkspace?.classList.toggle('has-active-change', Boolean(activeChange));
     els.notebookPanel.classList.toggle('hidden', !state.notebookOpen);
     document.body.classList.toggle('notebook-open', state.notebookOpen);
     els.notebookToggleButton?.setAttribute('aria-expanded', state.notebookOpen ? 'true' : 'false');
@@ -1455,16 +1537,16 @@ const renderNotebookPanel = () => {
         </button>
     `).join('');
     els.notebookAiDiff.classList.toggle('hidden', !activeChange);
-    els.notebookAiDiff.textContent = activeChange
-        ? `AI changed ${activeChange.path}\n\n${activeChange.diff}`
-        : '';
+    els.notebookAiDiff.innerHTML = activeChange ? renderNotebookDiff(activeChange) : '';
 
     if (!file) {
+        els.notebookWorkspace?.classList.remove('is-editing');
         els.notebookMeta.textContent = 'No file selected';
         els.notebookEditor.value = '';
         els.notebookPreview.innerHTML = '<p class="empty-list">Ask Gatita to create notes in this chat, or add a new note after the chat exists.</p>';
         els.notebookEditor.classList.add('hidden');
         els.notebookPreview.classList.remove('hidden');
+        els.notebookPreview.classList.remove('is-live-preview');
         iconRefresh();
         return;
     }
@@ -1475,8 +1557,9 @@ const renderNotebookPanel = () => {
     els.notebookEditor.spellcheck = NOTEBOOK_MARKDOWN_EXTENSIONS.has(getNotebookExtension(file.path)) || getNotebookExtension(file.path) === 'txt';
     if (document.activeElement !== els.notebookEditor) els.notebookEditor.value = editorContent;
     els.notebookEditor.classList.toggle('hidden', !editing);
-    els.notebookPreview.classList.toggle('hidden', editing);
-    els.notebookPreview.innerHTML = renderNotebookFileContent(file, file.content || '');
+    els.notebookPreview.classList.remove('hidden');
+    els.notebookPreview.classList.toggle('is-live-preview', editing);
+    els.notebookPreview.innerHTML = renderNotebookFileContent(file, editing ? editorContent : file.content || '');
     highlightCodeBlocks(els.notebookPreview);
     iconRefresh();
 };
@@ -2151,6 +2234,12 @@ const fetchMe = async () => {
     state.user = data.user || null;
     updateUsage(data.usage);
     updateAccount();
+    if (state.user && storageGet('thinking') === '1') {
+        els.thinkingToggle.checked = true;
+    }
+    if (state.user && storageGet('auto_web') === '1') {
+        els.autoWebToggle.checked = true;
+    }
     if (state.user && storageGet('research') === '1') {
         els.researchToggle.checked = true;
     }
@@ -2418,12 +2507,17 @@ const sendMessage = async (options = {}) => {
     const isRegenerate = Boolean(options.regenerateMessageId);
     const isResend = Boolean(options.resendMessageId);
     if (!text && state.pendingFiles.length === 0 && !isRegenerate) return;
-    if ((els.researchToggle.checked || els.deepResearchToggle.checked) && !state.user) {
+    if ((els.thinkingToggle.checked || els.researchToggle.checked || els.autoWebToggle.checked || els.deepResearchToggle.checked) && !state.user) {
+        els.thinkingToggle.checked = false;
+        els.researchToggle.checked = false;
+        els.autoWebToggle.checked = false;
+        els.deepResearchToggle.checked = false;
         state.messages.push({
             type: 'policy',
-            content: 'Research is only available for signed-in accounts.',
+            content: 'Thinking, web, and research tools are only available for signed-in accounts.',
             tosUrl: getTosUrl()
         });
+        updateSettingsSummary();
         renderMessages();
         return;
     }
@@ -2529,10 +2623,10 @@ const sendMessage = async (options = {}) => {
             attachments,
             modelId: els.modelSelect.value,
             personality: els.personalitySelect.value,
-            thinking: els.thinkingToggle.checked,
-            research: els.researchToggle.checked || els.deepResearchToggle.checked,
-            autoWeb: els.autoWebToggle.checked,
-            deepResearch: els.deepResearchToggle.checked,
+            thinking: Boolean(state.user && els.thinkingToggle.checked),
+            research: Boolean(state.user && (els.researchToggle.checked || els.deepResearchToggle.checked)),
+            autoWeb: Boolean(state.user && els.autoWebToggle.checked),
+            deepResearch: Boolean(state.user && els.deepResearchToggle.checked),
             regenerateMessageId: options.regenerateMessageId || undefined,
             resendMessageId: options.resendMessageId || undefined,
             displayName: state.user?.displayName || state.user?.email || 'Guest',
@@ -3047,6 +3141,13 @@ bindCustomSelect('model');
 bindCustomSelect('personality');
 
 els.thinkingToggle.addEventListener('change', () => {
+    if (els.thinkingToggle.checked && !state.user) {
+        els.thinkingToggle.checked = false;
+        storageSet('thinking', '0');
+        showToast('Sign in to use Thinking.');
+        updateSettingsSummary();
+        return;
+    }
     storageSet('thinking', els.thinkingToggle.checked ? '1' : '0');
     updateSettingsSummary();
 });
@@ -3054,6 +3155,7 @@ els.thinkingToggle.addEventListener('change', () => {
 els.researchToggle.addEventListener('change', () => {
     if (els.researchToggle.checked && !state.user) {
         els.researchToggle.checked = false;
+        storageSet('research', '0');
         showToast('Sign in to use Research.');
         updateSettingsSummary();
         return;
@@ -3067,6 +3169,13 @@ els.researchToggle.addEventListener('change', () => {
 });
 
 els.autoWebToggle.addEventListener('change', () => {
+    if (els.autoWebToggle.checked && !state.user) {
+        els.autoWebToggle.checked = false;
+        storageSet('auto_web', '0');
+        showToast('Sign in to use Auto web check.');
+        updateSettingsSummary();
+        return;
+    }
     storageSet('auto_web', els.autoWebToggle.checked ? '1' : '0');
     updateSettingsSummary();
 });
@@ -3082,6 +3191,7 @@ els.temporaryToggle.addEventListener('change', () => {
 els.deepResearchToggle.addEventListener('change', () => {
     if (els.deepResearchToggle.checked && !state.user) {
         els.deepResearchToggle.checked = false;
+        storageSet('deep_research', '0');
         showToast('Sign in to use Deep research.');
         updateSettingsSummary();
         return;

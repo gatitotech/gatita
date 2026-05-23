@@ -6,6 +6,10 @@
     <title>Gatita Ask</title>
     <meta name="description" content="Gatita Ask chat interface.">
     <meta name="theme-color" content="#542d14">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Gatita Ask">
+    <meta name="format-detection" content="telephone=no">
     <link rel="canonical" href="https://gatita.tech/">
     <link rel="icon" href="assets/avatar.webp" type="image/webp">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -198,7 +202,7 @@
 
                 <section class="notebook-workspace">
                     <div class="notebook-change-tabs hidden" id="notebookChangeTabs" role="tablist" aria-label="AI notebook changes"></div>
-                    <pre class="notebook-ai-diff hidden" id="notebookAiDiff"></pre>
+                    <div class="notebook-ai-diff hidden" id="notebookAiDiff" role="region" aria-label="Notebook diff"></div>
                     <div class="notebook-meta" id="notebookMeta">No file selected</div>
                     <textarea class="notebook-editor" id="notebookEditor" spellcheck="true" placeholder="Chat notes and AI-created notes appear here."></textarea>
                     <div class="notebook-preview hidden" id="notebookPreview"></div>
