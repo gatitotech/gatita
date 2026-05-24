@@ -3759,6 +3759,77 @@ body.sidebar-collapsed .chat-sidebar {
     width: min(560px, 100%);
 }
 
+.safety-backdrop {
+    z-index: 40;
+    background: rgba(12, 7, 4, 0.82);
+}
+
+.safety-modal {
+    width: min(560px, 100%);
+    padding: 24px;
+    display: grid;
+    grid-template-columns: 58px minmax(0, 1fr);
+    gap: 18px;
+    border-color: rgba(240, 189, 104, 0.5);
+}
+
+.banned-modal {
+    border-color: rgba(255, 123, 143, 0.58);
+}
+
+.safety-icon {
+    width: 58px;
+    height: 58px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(240, 189, 104, 0.42);
+    border-radius: var(--radius);
+    color: var(--warn);
+    background: rgba(240, 189, 104, 0.12);
+}
+
+.safety-icon.danger {
+    border-color: rgba(255, 123, 143, 0.42);
+    color: var(--danger);
+    background: rgba(255, 123, 143, 0.12);
+}
+
+.safety-icon svg {
+    width: 30px;
+    height: 30px;
+}
+
+.safety-body {
+    display: grid;
+    gap: 12px;
+}
+
+.safety-body h2,
+.safety-body p {
+    margin: 0;
+}
+
+.safety-body h2 {
+    font-size: 1.28rem;
+}
+
+.safety-body p,
+.safety-status {
+    color: var(--text-soft);
+    line-height: 1.55;
+}
+
+.safety-status {
+    padding: 11px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: rgba(0, 0, 0, 0.18);
+}
+
+.danger-submit {
+    background: linear-gradient(180deg, rgba(255, 123, 143, 0.95), rgba(148, 42, 62, 0.95));
+}
+
 .action-form {
     display: grid;
     gap: 12px;

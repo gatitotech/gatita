@@ -416,6 +416,33 @@
         </section>
     </div>
 
+    <div class="modal-backdrop safety-backdrop hidden" id="strikeModal" role="dialog" aria-modal="true" aria-labelledby="strikeModalTitle">
+        <section class="auth-modal safety-modal">
+            <div class="safety-icon">
+                <i data-lucide="triangle-alert"></i>
+            </div>
+            <div class="safety-body">
+                <h2 id="strikeModalTitle">Account Strike</h2>
+                <p id="strikeModalMessage">Your account has a strike for attempting to bypass Gatita Ask safety controls.</p>
+                <div class="safety-status" id="strikeModalStatus"></div>
+                <button class="auth-submit" id="strikeAcknowledgeButton" type="button">I understand</button>
+            </div>
+        </section>
+    </div>
+
+    <div class="modal-backdrop safety-backdrop hidden" id="banModal" role="dialog" aria-modal="true" aria-labelledby="banModalTitle">
+        <section class="auth-modal safety-modal banned-modal">
+            <div class="safety-icon danger">
+                <i data-lucide="ban"></i>
+            </div>
+            <div class="safety-body">
+                <h2 id="banModalTitle">Account Permanently Banned</h2>
+                <p id="banModalMessage">This account is permanently banned from Gatita Ask.</p>
+                <button class="auth-submit danger-submit" id="banSignOutButton" type="button">Sign out</button>
+            </div>
+        </section>
+    </div>
+
     <aside class="cookie-banner hidden" id="cookieBanner" role="status" aria-live="polite">
         <div>
             <strong>Required cookies</strong>

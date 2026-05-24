@@ -147,6 +147,13 @@ const els = {
     legalGateModal: document.getElementById('legalGateModal'),
     legalAcceptCheckbox: document.getElementById('legalAcceptCheckbox'),
     legalAcceptButton: document.getElementById('legalAcceptButton'),
+    strikeModal: document.getElementById('strikeModal'),
+    strikeModalMessage: document.getElementById('strikeModalMessage'),
+    strikeModalStatus: document.getElementById('strikeModalStatus'),
+    strikeAcknowledgeButton: document.getElementById('strikeAcknowledgeButton'),
+    banModal: document.getElementById('banModal'),
+    banModalMessage: document.getElementById('banModalMessage'),
+    banSignOutButton: document.getElementById('banSignOutButton'),
     cookieBanner: document.getElementById('cookieBanner'),
     cookieAcceptButton: document.getElementById('cookieAcceptButton'),
     authModal: document.getElementById('authModal'),
@@ -206,6 +213,7 @@ const state = {
     authToken: storageGet('token'),
     guestId: storageGet('guest_id'),
     user: null,
+    accountStatus: null,
     pendingFiles: [],
     browserProof: null,
     browserCheckVerifiedUntil: 0,
@@ -848,6 +856,44 @@ const updateUsage = (usage) => {
         els.usageText.textContent = 'Guest';
     }
     renderAccountWindow();
+};
+
+const formatDuration = (ms) => {
+    const minutes = Math.max(1, Math.ceil(Number(ms || 0) / 60000));
+    if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+    const hours = Math.ceil(minutes / 60);
+    return `${hours} hour${hours === 1 ? '' : 's'}`;
+};
+
+const updateAccountStatus = (status) => {
+    state.accountStatus = status || null;
+    if (!state.user || !state.accountStatus) {
+        hideWithMotion(els.strikeModal);
+        hideWithMotion(els.banModal);
+        return;
+    }
+
+    if (state.accountStatus.banned) {
+        els.banModalMessage.textContent = state.accountStatus.banReason
+            ? `This account is permanently banned from Gatita Ask. ${state.accountStatus.banReason}`
+            : 'This account is permanently banned from Gatita Ask.';
+        hideWithMotion(els.strikeModal);
+        showWithMotion(els.banModal);
+        return;
+    }
+
+    hideWithMotion(els.banModal);
+    if (state.accountStatus.strikeAckRequired) {
+        const strikes = Number(state.accountStatus.strikes || 0);
+        const blockedMs = Number(state.accountStatus.chatBlockedRemainingMs || 0);
+        els.strikeModalMessage.textContent = 'Your account has a strike for attempting to bypass Gatita Ask safety controls.';
+        els.strikeModalStatus.textContent = blockedMs > 0
+            ? `Strike ${strikes}. Chat access is paused for about ${formatDuration(blockedMs)}.`
+            : `Strike ${strikes}. Future strikes may pause chat access or permanently ban the account.`;
+        showWithMotion(els.strikeModal);
+    } else {
+        hideWithMotion(els.strikeModal);
+    }
 };
 
 const renderAccountWindow = () => {
@@ -2261,6 +2307,7 @@ const fetchConfig = async () => {
     const data = await apiFetch('/config');
     state.config = data;
     updateUsage(data.usage);
+    updateAccountStatus(data.accountStatus);
     renderSelects();
     renderBrowserCheck();
 };
@@ -2269,6 +2316,7 @@ const fetchMe = async () => {
     const data = await apiFetch('/me');
     state.user = data.user || null;
     updateUsage(data.usage);
+    updateAccountStatus(data.accountStatus);
     updateAccount();
     if (state.user && storageGet('thinking') === '1') {
         els.thinkingToggle.checked = true;
@@ -2543,6 +2591,14 @@ const sendMessage = async (options = {}) => {
     const isRegenerate = Boolean(options.regenerateMessageId);
     const isResend = Boolean(options.resendMessageId);
     if (!text && state.pendingFiles.length === 0 && !isRegenerate) return;
+    if (state.accountStatus?.banned) {
+        updateAccountStatus(state.accountStatus);
+        return;
+    }
+    if (Number(state.accountStatus?.chatBlockedUntil || 0) > Date.now()) {
+        showToast(`Chat access is paused for about ${formatDuration(Number(state.accountStatus.chatBlockedUntil) - Date.now())}.`);
+        return;
+    }
     if ((els.thinkingToggle.checked || els.researchToggle.checked || els.autoWebToggle.checked || els.deepResearchToggle.checked) && !state.user) {
         els.thinkingToggle.checked = false;
         els.researchToggle.checked = false;
@@ -2677,6 +2733,7 @@ const sendMessage = async (options = {}) => {
         await streamApi(endpoint, payload, (event, data) => {
             if (event === 'policy') {
                 policyHandled = true;
+                updateAccountStatus(data.accountStatus);
                 messageList = messageList.filter((message) => message !== assistantDraft);
                 messageList.push({
                     type: 'policy',
@@ -2755,6 +2812,7 @@ const sendMessage = async (options = {}) => {
             }
 
             if (event === 'error') {
+                if (data.accountStatus) updateAccountStatus(data.accountStatus);
                 throw Object.assign(new Error(data.error || 'Ask could not respond.'), { data });
             }
 
@@ -2772,6 +2830,7 @@ const sendMessage = async (options = {}) => {
         }, { signal: controller.signal });
 
         if (donePayload?.policyViolation && !policyHandled) {
+            updateAccountStatus(donePayload.accountStatus);
             messageList = messageList.filter((message) => message !== assistantDraft);
             messageList.push({
                 type: 'policy',
@@ -2779,6 +2838,7 @@ const sendMessage = async (options = {}) => {
                 tosUrl: donePayload.policyViolation.tosUrl
             });
         } else if (donePayload?.policyViolation) {
+            updateAccountStatus(donePayload.accountStatus);
             messageList = messageList.filter((message) => message !== assistantDraft);
         } else if (donePayload?.message) {
             if (donePayload.userMessageId && sendMessage.userDraft) {
@@ -2800,6 +2860,7 @@ const sendMessage = async (options = {}) => {
         setMessagesForStreamTarget(streamTarget, messageList);
 
         updateUsage(donePayload?.usage);
+        updateAccountStatus(donePayload?.accountStatus || state.accountStatus);
         rememberBrowserCheckPass();
         resetBrowserCheck('message');
         if (isTemporary) {
@@ -2826,6 +2887,7 @@ const sendMessage = async (options = {}) => {
         resetBrowserCheck('message');
         if (error.status === 403) forgetBrowserCheckPass();
         if (error.data?.usage) updateUsage(error.data.usage);
+        if (error.data?.accountStatus) updateAccountStatus(error.data.accountStatus);
         showToast(error.message || 'Ask could not respond.');
     } finally {
         const target = streamTarget || (isTemporary
@@ -2921,6 +2983,7 @@ const submitAuth = async () => {
         state.authToken = data.token;
         storageSet('token', state.authToken);
         state.user = data.user;
+        updateAccountStatus(data.accountStatus || null);
         updateAccount();
         resetBrowserCheck('auth');
         closeAuthModal();
@@ -2945,6 +3008,7 @@ const submitAuth = async () => {
 const resetSignedOutState = async () => {
     state.authToken = '';
     state.user = null;
+    state.accountStatus = null;
     state.activeChatId = null;
     state.activeSharedToken = '';
     state.temporaryMode = false;
@@ -3480,6 +3544,7 @@ document.addEventListener('keydown', (event) => {
         return;
     }
     if (event.key !== 'Escape') return;
+    if (!els.banModal.classList.contains('hidden') || !els.strikeModal.classList.contains('hidden')) return;
     closeCustomSelects();
     if (isSettingsMenuOpen()) closeSettingsMenu();
     if (!els.actionModal.classList.contains('hidden')) closeActionModal(null);
@@ -3507,6 +3572,22 @@ els.accountModal.addEventListener('click', (event) => {
     if (event.target === els.accountModal) closeAccountModal();
 });
 els.accountSignOutButton.addEventListener('click', () => {
+    signOut().catch((error) => showToast(error.message));
+});
+
+els.strikeAcknowledgeButton.addEventListener('click', async () => {
+    try {
+        const data = await apiFetch('/account/strike-ack', {
+            method: 'POST',
+            body: JSON.stringify({})
+        });
+        updateAccountStatus(data.accountStatus);
+    } catch (error) {
+        showToast(error.message || 'Could not acknowledge strike.');
+    }
+});
+
+els.banSignOutButton.addEventListener('click', () => {
     signOut().catch((error) => showToast(error.message));
 });
 
