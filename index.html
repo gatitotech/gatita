@@ -1,475 +1,863 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gatita Ask</title>
-    <meta name="description" content="Gatita Ask chat interface.">
-    <meta name="theme-color" content="#542d14">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-title" content="Gatita Ask">
-    <meta name="format-detection" content="telephone=no">
-    <link rel="canonical" href="https://gatita.tech/">
-    <link rel="icon" href="assets/avatar.webp" type="image/webp">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
-    <link rel="stylesheet" href="styles.css">
-</head>
-<body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover"
+    />
+    <title data-i18n="app.title">Gatita Ask</title>
+    <meta name="description" content="Gatita Ask chat interface." />
+    <meta name="theme-color" content="#050505" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Gatita Ask" />
+    <meta name="format-detection" content="telephone=no" />
+    <link rel="canonical" href="https://gatita.tech/" />
+    <link rel="icon" href="assets/avatar.webp" type="image/webp" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css"
+    />
+    <link rel="stylesheet" href="styles.css" />
+      <script src="i18n.js"></script>
+  </head>
+  <body>
     <div class="smoke-layer" aria-hidden="true"></div>
 
     <main class="ask-app">
-        <aside class="chat-sidebar" aria-label="Chats">
-            <div class="side-head">
-                <a class="brand" href="https://gatita.tech/" aria-label="Gatita Ask home">
-                    <img src="assets/avatar.webp" alt="" width="36" height="36">
-                    <span>Gatita Ask</span>
-                </a>
-                <div class="side-actions">
-                    <button class="icon-btn updates-open-btn" id="updatesButton" type="button" aria-label="Updates" title="Updates" aria-expanded="false" aria-controls="updatesModal">
-                        <i data-lucide="newspaper"></i>
-                    </button>
-                    <button class="icon-btn" id="newChatButton" type="button" aria-label="New chat" title="New chat">
-                        <i data-lucide="plus"></i>
-                    </button>
+      <aside class="chat-sidebar" aria-label="Chats">
+        <div class="side-head">
+          <a
+            class="brand"
+            href="https://gatita.tech/"
+            aria-label="Gatita Ask home"
+          >
+            <img src="assets/avatar.webp" alt="" width="36" height="36" />
+            <span data-i18n="app.title">Gatita Ask</span>
+          </a>
+          <div class="side-actions">
+            <button
+              class="icon-btn updates-open-btn"
+              id="updatesButton"
+              type="button"
+              aria-label="Updates"
+              title="Updates" data-i18n-title="sidebar.updates"
+              aria-expanded="false"
+              aria-controls="updatesModal"
+            >
+              <i data-lucide="newspaper"></i>
+            </button>
+            <button
+              class="icon-btn"
+              id="newChatButton"
+              type="button"
+              aria-label="New chat"
+              title="New chat" data-i18n-title="sidebar.newChat"
+            >
+              <i data-lucide="plus"></i>
+            </button>
+          </div>
+        </div>
+
+        <button
+          class="account-strip"
+          id="accountButton"
+          type="button"
+          aria-haspopup="true"
+        >
+          <div class="account-avatar" id="accountAvatar">G</div>
+          <div class="account-info">
+            <span class="account-name" id="accountName" data-i18n="account.guest">Guest</span>
+            <span class="usage-text" id="usageText" data-i18n="account.loading">Loading...</span>
+          </div>
+        </button>
+
+        <div class="chat-search-wrap">
+          <i data-lucide="search"></i>
+          <input
+            id="chatSearchInput"
+            type="search"
+            placeholder="Search chats" data-i18n-placeholder="sidebar.searchChats"
+          />
+        </div>
+
+        <nav class="chat-list" id="chatList" aria-label="Saved chats"></nav>
+      </aside>
+
+      <section class="chat-main" aria-label="Gatita Ask chat">
+        <header class="chat-topbar">
+          <div class="topbar-inner">
+            <button
+              class="icon-btn sidebar-toggle"
+              id="sidebarToggleButton"
+              type="button"
+              aria-label="Toggle chats"
+              title="Toggle chats"
+            >
+              <i data-lucide="panel-left"></i>
+            </button>
+            <div class="settings-wrap">
+              <button
+                class="settings-button model-control"
+                id="settingsButton"
+                type="button"
+                aria-label="Ask controls"
+                title="Ask controls"
+                aria-expanded="false"
+                aria-controls="settingsMenu"
+              >
+                <i data-lucide="sliders-horizontal"></i>
+                <span class="model-control-copy">
+                  <strong class="settings-model-name" id="settingsModelName" data-i18n="account.loading">Loading...</strong>
+                  <span
+                    class="settings-chip-row"
+                    id="settingsSummary"
+                    aria-label="Ask control summary"
+                  ></span>
+                </span>
+                <i data-lucide="chevron-down" class="model-control-chevron"></i>
+              </button>
+              <div class="settings-menu hidden" id="settingsMenu">
+                <div
+                  class="select-shell custom-select-shell"
+                  data-custom-select="model"
+                >
+                  <span data-i18n="chat.model">Model</span>
+                  <select
+                    class="native-select-hidden"
+                    id="modelSelect"
+                    aria-hidden="true"
+                    tabindex="-1"
+                  ></select>
+                  <button
+                    class="custom-select-button"
+                    id="modelSelectButton"
+                    type="button"
+                    aria-haspopup="listbox"
+                    aria-expanded="false"
+                    aria-controls="modelSelectMenu"
+                  >
+                    <span id="modelSelectValue" data-i18n="chat.model">Model</span>
+                    <i data-lucide="chevron-down"></i>
+                  </button>
+                  <div
+                    class="custom-select-menu hidden"
+                    id="modelSelectMenu"
+                    role="listbox"
+                    aria-label="Model"
+                  ></div>
                 </div>
+                <div
+                  class="select-shell custom-select-shell"
+                  data-custom-select="personality"
+                >
+                  <span data-i18n="chat.personality">Personality</span>
+                  <select
+                    class="native-select-hidden"
+                    id="personalitySelect"
+                    aria-hidden="true"
+                    tabindex="-1"
+                  ></select>
+                  <button
+                    class="custom-select-button"
+                    id="personalitySelectButton"
+                    type="button"
+                    aria-haspopup="listbox"
+                    aria-expanded="false"
+                    aria-controls="personalitySelectMenu"
+                  >
+                    <span id="personalitySelectValue" data-i18n="chat.personality">Personality</span>
+                    <i data-lucide="chevron-down"></i>
+                  </button>
+                  <div
+                    class="custom-select-menu hidden"
+                    id="personalitySelectMenu"
+                    role="listbox"
+                    aria-label="Personality"
+                  ></div>
+                </div>
+                <label class="thinking-toggle">
+                  <input id="thinkingToggle" type="checkbox" />
+                  <span class="toggle-track"></span>
+                  <span data-i18n="chat.thinking">Thinking</span>
+                </label>
+                <label
+                  class="thinking-toggle research-control"
+                  title="Research is available for signed-in accounts" data-i18n-title="chat.researchHint"
+                >
+                  <input id="researchToggle" type="checkbox" />
+                  <span class="toggle-track"></span>
+                  <span data-i18n="chat.research">Research</span>
+                </label>
+
+                <label class="thinking-toggle">
+                  <input id="temporaryToggle" type="checkbox" />
+                  <span class="toggle-track"></span>
+                  <span data-i18n="chat.temporaryChat">Temporary chat</span>
+                </label>
+                <label
+                  class="thinking-toggle research-control"
+                  title="Deep research is available for signed-in accounts" data-i18n-title="chat.deepResearchHint"
+                >
+                  <input id="deepResearchToggle" type="checkbox" />
+                  <span class="toggle-track"></span>
+                  <span data-i18n="chat.deepResearch">Deep research</span>
+                </label>
+              </div>
             </div>
+            <button
+              class="settings-button notebook-open-btn"
+              id="notebookToggleButton"
+              type="button"
+              aria-expanded="false"
+              aria-controls="notebookPanel"
+            >
+              <i data-lucide="notebook-tabs"></i>
+              <span data-i18n="chat.notes">Notes</span>
+            </button>
+          </div>
+        </header>
 
-            <div class="account-strip">
-                <div>
-                    <span class="account-name" id="accountName">Guest</span>
-                    <span class="usage-text" id="usageText">Loading...</span>
-                </div>
-                <button class="small-btn" id="accountButton" type="button">Account</button>
+        <div class="message-scroll" id="messageScroll">
+          <div class="empty-state" id="emptyState">
+            <img src="assets/avatar.webp" alt="" width="84" height="84" />
+            <h1 id="welcomeText" data-i18n="app.title">Gatita Ask</h1>
+            <div
+              class="template-tray"
+              id="templateTray"
+              aria-label="Prompt templates"
+            ></div>
+          </div>
+          <div class="messages" id="messages"></div>
+          <div
+            class="scroll-sentinel"
+            id="scrollSentinel"
+            aria-hidden="true"
+          ></div>
+        </div>
+
+        <section class="composer-zone" aria-label="Message composer">
+          <div class="attachment-row" id="attachmentRow"></div>
+          <div class="composer-container">
+            <form class="composer" id="composer">
+              <button
+                class="icon-btn attach-btn"
+                id="attachButton"
+                type="button"
+                aria-label="Attach files"
+                title="Attach files"
+              >
+                <i data-lucide="paperclip"></i>
+              </button>
+              <input id="fileInput" type="file" multiple hidden />
+              <textarea
+                id="messageInput"
+                rows="1"
+                placeholder="Ask anything" data-i18n-placeholder="composer.askAnything"
+              ></textarea>
+              <button class="send-btn" id="sendButton" type="submit">
+                <i data-lucide="send-horizontal"></i>
+                <i data-lucide="square" class="send-stop-icon"></i>
+                <span data-i18n="composer.send">Send</span>
+              </button>
+            </form>
+            <div class="blocked-overlay hidden" id="blockedOverlay">
+              <i data-lucide="lock"></i>
+              <span data-i18n="composer.chatAccessBlocked">Chat access blocked</span>
             </div>
-
-            <div class="chat-search-wrap">
-                <i data-lucide="search"></i>
-                <input id="chatSearchInput" type="search" placeholder="Search chats">
+          </div>
+          <div class="verify-row">
+            <div class="browser-check-stack hidden">
+              <span
+                class="browser-check-status hidden"
+                id="browserCheckStatus"
+                role="status"
+                aria-live="polite"
+              ></span>
             </div>
-
-            <nav class="chat-list" id="chatList" aria-label="Saved chats"></nav>
-        </aside>
-
-        <section class="chat-main" aria-label="Gatita Ask chat">
-            <header class="chat-topbar">
-                <div class="topbar-inner">
-                    <button class="icon-btn sidebar-toggle" id="sidebarToggleButton" type="button" aria-label="Toggle chats" title="Toggle chats">
-                        <i data-lucide="panel-left"></i>
-                    </button>
-                    <div class="mode-summary">
-                        <span class="mode-label">Model setup</span>
-                        <strong class="settings-model-name" id="settingsModelName">Loading...</strong>
-                        <div class="settings-chip-row" id="settingsSummary" aria-label="Enabled settings"></div>
-                    </div>
-                    <div class="settings-wrap">
-                        <button class="settings-button" id="settingsButton" type="button" aria-label="Model settings" aria-expanded="false" aria-controls="settingsMenu">
-                            <i data-lucide="sliders-horizontal"></i>
-                            <span>Model settings</span>
-                        </button>
-                        <div class="settings-menu hidden" id="settingsMenu">
-                            <div class="select-shell custom-select-shell" data-custom-select="model">
-                                <span>Model</span>
-                                <select class="native-select-hidden" id="modelSelect" aria-hidden="true" tabindex="-1"></select>
-                                <button class="custom-select-button" id="modelSelectButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="modelSelectMenu">
-                                    <span id="modelSelectValue">Model</span>
-                                    <i data-lucide="chevron-down"></i>
-                                </button>
-                                <div class="custom-select-menu hidden" id="modelSelectMenu" role="listbox" aria-label="Model"></div>
-                            </div>
-                            <div class="select-shell custom-select-shell" data-custom-select="personality">
-                                <span>Personality</span>
-                                <select class="native-select-hidden" id="personalitySelect" aria-hidden="true" tabindex="-1"></select>
-                                <button class="custom-select-button" id="personalitySelectButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="personalitySelectMenu">
-                                    <span id="personalitySelectValue">Personality</span>
-                                    <i data-lucide="chevron-down"></i>
-                                </button>
-                                <div class="custom-select-menu hidden" id="personalitySelectMenu" role="listbox" aria-label="Personality"></div>
-                            </div>
-                            <label class="thinking-toggle">
-                                <input id="thinkingToggle" type="checkbox">
-                                <span class="toggle-track"></span>
-                                <span>Thinking</span>
-                            </label>
-                            <label class="thinking-toggle research-control" title="Research is available for signed-in accounts">
-                                <input id="researchToggle" type="checkbox">
-                                <span class="toggle-track"></span>
-                                <span>Research</span>
-                            </label>
-                            <label class="thinking-toggle">
-                                <input id="autoWebToggle" type="checkbox">
-                                <span class="toggle-track"></span>
-                                <span>Auto web check</span>
-                            </label>
-                            <label class="thinking-toggle">
-                                <input id="temporaryToggle" type="checkbox">
-                                <span class="toggle-track"></span>
-                                <span>Temporary chat</span>
-                            </label>
-                            <label class="thinking-toggle research-control" title="Deep research is available for signed-in accounts">
-                                <input id="deepResearchToggle" type="checkbox">
-                                <span class="toggle-track"></span>
-                                <span>Deep research</span>
-                            </label>
-                        </div>
-                    </div>
-                    <button class="settings-button notebook-open-btn" id="notebookToggleButton" type="button" aria-expanded="false" aria-controls="notebookPanel">
-                        <i data-lucide="notebook-tabs"></i>
-                        <span>Notes</span>
-                    </button>
-                </div>
-            </header>
-
-            <div class="message-scroll" id="messageScroll">
-                <div class="empty-state" id="emptyState">
-                    <img src="assets/avatar.webp" alt="" width="84" height="84">
-                    <h1>Gatita Ask</h1>
-                </div>
-                <div class="messages" id="messages"></div>
-                <div class="scroll-sentinel" id="scrollSentinel" aria-hidden="true"></div>
-            </div>
-
-            <section class="composer-zone" aria-label="Message composer">
-                <div class="attachment-row" id="attachmentRow"></div>
-                <div class="template-tray" id="templateTray" aria-label="Prompt templates">
-                    <span>Try</span>
-                    <button type="button" data-template-id="coding">Debug code</button>
-                    <button type="button" data-template-id="coding-notebook">Code notes</button>
-                    <button type="button" data-template-id="school">Study guide</button>
-                    <button type="button" data-template-id="school-essay">Essay outline</button>
-                    <button type="button" data-template-id="writing">Rewrite</button>
-                    <button type="button" data-template-id="writing-story">Story starter</button>
-                    <button type="button" data-template-id="research">Research brief</button>
-                    <button type="button" data-template-id="research-compare">Compare sources</button>
-                </div>
-                <form class="composer" id="composer">
-                    <button class="icon-btn attach-btn" id="attachButton" type="button" aria-label="Attach files" title="Attach files">
-                        <i data-lucide="paperclip"></i>
-                    </button>
-                    <input id="fileInput" type="file" multiple hidden>
-                    <textarea id="messageInput" rows="1" placeholder="Ask anything"></textarea>
-                    <button class="send-btn" id="sendButton" type="submit">
-                        <i data-lucide="send-horizontal"></i>
-                        <i data-lucide="square" class="send-stop-icon"></i>
-                        <span>Send</span>
-                    </button>
-                </form>
-                <div class="verify-row">
-                    <div class="browser-check-stack hidden">
-                        <span class="browser-check-status hidden" id="browserCheckStatus" role="status" aria-live="polite"></span>
-                    </div>
-                    <p>Gatita Ask is in beta and may create biased or incorrect information. Verify critical facts. <a href="legal.html">Legal</a></p>
-                </div>
-            </section>
+            <p>
+              <span data-i18n="footer.disclaimer">Gatita Ask is in beta and may create biased or incorrect information. Verify critical facts.</span> <a href="legal.html" data-i18n="footer.legal">Legal</a>
+            </p>
+          </div>
         </section>
+      </section>
 
-        <aside class="notebook-panel hidden" id="notebookPanel" aria-label="Chat notes">
-            <div class="notebook-head">
-                <div>
-                    <span class="mode-label">Workspace</span>
-                    <strong id="notebookPanelTitle">Chat Notes</strong>
-                </div>
-                <button class="icon-btn" id="closeNotebookButton" type="button" aria-label="Close notebooks">
-                    <i data-lucide="x"></i>
-                </button>
-            </div>
+      <aside
+        class="notebook-panel hidden"
+        id="notebookPanel"
+        aria-label="Chat notes"
+      >
+        <div class="notebook-head">
+          <div>
+            <span class="mode-label" data-i18n="notebook.workspace">Workspace</span>
+            <strong id="notebookPanelTitle" data-i18n="notebook.chatNotes">Chat Notes</strong>
+          </div>
+          <button
+            class="icon-btn"
+            id="closeNotebookButton"
+            type="button"
+            aria-label="Close notebooks"
+          >
+            <i data-lucide="x"></i>
+          </button>
+        </div>
 
-            <div class="notebook-toolbar">
-                <button class="small-btn" id="newNotebookFileButton" type="button">
-                    <i data-lucide="file-plus-2"></i>
-                    <span>New note</span>
-                </button>
-                <button class="small-btn" id="copyNotebookButton" type="button">
-                    <i data-lucide="copy"></i>
-                    <span>Copy</span>
-                </button>
-                <button class="small-btn" id="editNotebookButton" type="button">
-                    <i data-lucide="pencil"></i>
-                    <span>Edit</span>
-                </button>
-                <button class="small-btn" id="saveNotebookButton" type="button">
-                    <i data-lucide="save"></i>
-                    <span>Save</span>
-                </button>
-                <span class="notebook-scope" id="notebookScopeText">Saved to this chat</span>
-            </div>
+        <div class="notebook-toolbar">
+          <button class="small-btn" id="newNotebookFileButton" type="button">
+            <i data-lucide="file-plus-2"></i>
+            <span>New note</span>
+          </button>
+          <button class="small-btn" id="copyNotebookButton" type="button">
+            <i data-lucide="copy"></i>
+            <span>Copy</span>
+          </button>
+          <button class="small-btn" id="editNotebookButton" type="button">
+            <i data-lucide="pencil"></i>
+            <span>Edit</span>
+          </button>
+          <button class="small-btn" id="saveNotebookButton" type="button">
+            <i data-lucide="save"></i>
+            <span>Save</span>
+          </button>
+          <span class="notebook-scope" id="notebookScopeText"
+            >Saved to this chat</span
+          >
+        </div>
 
-            <div class="notebook-body">
-                <nav class="notebook-files" id="notebookFileList" aria-label="Chat notes"></nav>
+        <div class="notebook-body">
+          <nav
+            class="notebook-files"
+            id="notebookFileList"
+            aria-label="Chat notes"
+          ></nav>
 
-                <section class="notebook-workspace">
-                    <div class="notebook-change-tabs hidden" id="notebookChangeTabs" role="tablist" aria-label="AI notebook changes"></div>
-                    <div class="notebook-ai-diff hidden" id="notebookAiDiff" role="region" aria-label="Notebook diff"></div>
-                    <div class="notebook-meta" id="notebookMeta">No file selected</div>
-                    <textarea class="notebook-editor" id="notebookEditor" spellcheck="true" placeholder="Chat notes and AI-created notes appear here."></textarea>
-                    <div class="notebook-preview hidden" id="notebookPreview"></div>
-                </section>
-            </div>
-        </aside>
+          <section class="notebook-workspace">
+            <div
+              class="notebook-change-tabs hidden"
+              id="notebookChangeTabs"
+              role="tablist"
+              aria-label="AI notebook changes"
+            ></div>
+            <div
+              class="notebook-ai-diff hidden"
+              id="notebookAiDiff"
+              role="region"
+              aria-label="Notebook diff"
+            ></div>
+            <div class="notebook-meta" id="notebookMeta">No file selected</div>
+            <textarea
+              class="notebook-editor"
+              id="notebookEditor"
+              spellcheck="true"
+              placeholder="Chat notes and AI-created notes appear here."
+            ></textarea>
+            <div class="notebook-preview hidden" id="notebookPreview"></div>
+          </section>
+        </div>
+      </aside>
     </main>
 
-    <div class="modal-backdrop hidden" id="actionModal" role="dialog" aria-modal="true" aria-labelledby="actionModalTitle">
-        <section class="auth-modal action-window">
-            <div class="modal-head">
-                <h2 id="actionModalTitle">Action</h2>
-                <button class="icon-btn" id="actionModalCloseButton" type="button" aria-label="Close">
-                    <i data-lucide="x"></i>
-                </button>
-            </div>
-
-            <form class="action-form" id="actionModalForm">
-                <p class="action-message" id="actionModalMessage"></p>
-                <label class="hidden" id="actionModalInputWrap">
-                    <span id="actionModalInputLabel">Name</span>
-                    <input id="actionModalInput" type="text">
-                </label>
-                <label class="hidden" id="actionModalTextareaWrap">
-                    <span id="actionModalTextareaLabel">Text</span>
-                    <textarea id="actionModalTextarea" rows="8"></textarea>
-                </label>
-                <p class="form-error" id="actionModalError" role="alert"></p>
-                <div class="action-buttons">
-                    <button class="small-btn" id="actionModalCancelButton" type="button">Cancel</button>
-                    <button class="auth-submit" id="actionModalSubmitButton" type="submit">Save</button>
-                </div>
-            </form>
-        </section>
-    </div>
-
-    <div class="modal-backdrop hidden" id="authModal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
-        <section class="auth-modal">
-            <div class="modal-head">
-                <h2 id="authTitle">Account</h2>
-                <button class="icon-btn" id="closeAuthButton" type="button" aria-label="Close">
-                    <i data-lucide="x"></i>
-                </button>
-            </div>
-
-            <div class="auth-tabs" role="tablist">
-                <button class="auth-tab active" type="button" data-auth-mode="login">Sign in</button>
-                <button class="auth-tab" type="button" data-auth-mode="register">Create account</button>
-            </div>
-
-            <form class="auth-form" id="authForm">
-                <label>
-                    <span>Email</span>
-                    <input id="authEmail" type="email" autocomplete="email" required>
-                </label>
-                <label class="register-only hidden">
-                    <span>Display name</span>
-                    <input id="authDisplayName" type="text" autocomplete="nickname" maxlength="40">
-                </label>
-                <label>
-                    <span>Password</span>
-                    <input id="authPassword" type="password" autocomplete="current-password" required minlength="8">
-                </label>
-                <div class="browser-check-stack auth-browser-check hidden">
-                    <span class="browser-check-status hidden" id="authBrowserCheckStatus" role="status" aria-live="polite"></span>
-                </div>
-                <p class="form-error" id="authError" role="alert"></p>
-                <button class="auth-submit" type="submit">Continue</button>
-            </form>
-        </section>
-    </div>
-
-    <div class="modal-backdrop hidden" id="accountModal" role="dialog" aria-modal="true" aria-labelledby="accountTitle">
-        <section class="auth-modal account-window">
-            <div class="modal-head">
-                <h2 id="accountTitle">Account settings</h2>
-                <button class="icon-btn" id="closeAccountButton" type="button" aria-label="Close">
-                    <i data-lucide="x"></i>
-                </button>
-            </div>
-
-            <div class="account-body">
-                <div class="account-card">
-                    <span class="account-label">Signed in as</span>
-                    <strong id="accountModalName">Account</strong>
-                    <span id="accountModalEmail"></span>
-                </div>
-
-                <div class="rate-grid">
-                    <div class="rate-card">
-                        <span class="account-label">Messages</span>
-                        <strong id="accountMinuteLimit">-</strong>
-                        <span>Per-minute limit</span>
-                    </div>
-                    <div class="rate-card">
-                        <span class="account-label">Deep research</span>
-                        <strong id="accountDeepLimit">-</strong>
-                        <span>Daily allowance</span>
-                    </div>
-                </div>
-
-                <label class="account-toggle">
-                    <span>
-                        <strong>Completion notifications</strong>
-                        <small>Get a browser notification when Gatita finishes answering.</small>
-                    </span>
-                    <input id="notificationsToggle" type="checkbox">
-                    <span class="toggle-track"></span>
-                </label>
-
-                <div class="account-actions">
-                    <button class="small-btn" id="accountSignOutButton" type="button">Sign out</button>
-                </div>
-
-                <form class="password-form" id="passwordForm">
-                    <label>
-                        <span>Current password</span>
-                        <input id="currentPassword" type="password" autocomplete="current-password">
-                    </label>
-                    <label>
-                        <span>New password</span>
-                        <input id="newPassword" type="password" autocomplete="new-password" minlength="8">
-                    </label>
-                    <p class="form-error" id="passwordError" role="alert"></p>
-                    <button class="auth-submit" type="submit">Change password</button>
-                </form>
-
-                <form class="delete-account-form" id="deleteAccountForm">
-                    <div class="account-danger-card">
-                        <span class="account-label">Danger zone</span>
-                        <strong>Delete account</strong>
-                        <p>Schedules your account and saved chats for deletion. Final deletion happens after 7 days unless you sign back in first.</p>
-                    </div>
-                    <label>
-                        <span>Current password</span>
-                        <input id="deleteAccountPassword" type="password" autocomplete="current-password">
-                    </label>
-                    <p class="account-deletion-status hidden" id="accountDeletionStatus"></p>
-                    <p class="form-error" id="deleteAccountError" role="alert"></p>
-                    <button class="small-btn danger-action" id="deleteAccountButton" type="submit">Schedule account deletion</button>
-                </form>
-            </div>
-        </section>
-    </div>
-
-    <div class="modal-backdrop hidden" id="updatesModal" role="dialog" aria-modal="true" aria-labelledby="updatesTitle">
-        <section class="auth-modal updates-window">
-            <div class="modal-head">
-                <h2 id="updatesTitle">Gatita Updates</h2>
-                <button class="icon-btn" id="closeUpdatesButton" type="button" aria-label="Close updates">
-                    <i data-lucide="x"></i>
-                </button>
-            </div>
-            <div class="updates-body">
-                <form class="updates-admin hidden" id="updatesForm">
-                    <label>
-                        <span>Title</span>
-                        <input id="updateTitleInput" type="text" maxlength="120" placeholder="What changed?">
-                    </label>
-                    <label>
-                        <span>Post</span>
-                        <textarea id="updateContentInput" rows="7" placeholder="Markdown, code blocks, and math are supported."></textarea>
-                    </label>
-                    <p class="form-error" id="updatesError" role="alert"></p>
-                    <button class="auth-submit" type="submit">Post update</button>
-                </form>
-                <div class="updates-list" id="updatesList"></div>
-            </div>
-        </section>
-    </div>
-
-    <div class="modal-backdrop consent-backdrop hidden" id="notificationPromptModal" role="dialog" aria-modal="true" aria-labelledby="notificationPromptTitle">
-        <section class="auth-modal consent-modal">
-            <div class="modal-head">
-                <h2 id="notificationPromptTitle">Notify When Gatita Is Done?</h2>
-                <button class="icon-btn" id="notificationPromptCloseButton" type="button" aria-label="Close">
-                    <i data-lucide="x"></i>
-                </button>
-            </div>
-            <div class="consent-body">
-                <p>Gatita can send a browser notification when a response finishes, so you can switch tabs and come back when the answer is ready.</p>
-                <div class="consent-note">
-                    <strong>Optional browser permission</strong>
-                    <span>Notifications are only used for finished Ask responses. You can turn them off again in the account menu or your browser settings.</span>
-                </div>
-                <div class="notification-actions">
-                    <button class="auth-submit" id="notificationEnableButton" type="button">Enable notifications</button>
-                    <button class="small-btn" id="notificationLaterButton" type="button">Not now</button>
-                </div>
-            </div>
-        </section>
-    </div>
-
-    <div class="modal-backdrop consent-backdrop hidden" id="legalGateModal" role="dialog" aria-modal="true" aria-labelledby="legalGateTitle">
-        <section class="auth-modal consent-modal">
-            <div class="modal-head">
-                <h2 id="legalGateTitle">Before You Use Gatita Ask</h2>
-            </div>
-            <div class="consent-body">
-                <p>Gatita Ask requires acceptance of the Terms of Service and Privacy Policy before the chat website can be used in this browser.</p>
-                <div class="consent-note">
-                    <strong>Required cookies and storage</strong>
-                    <span>Cookies, local storage, browser verification, session tokens, and rate limits are required for login, spam prevention, API protection, saved chats, and abuse prevention. They cannot be disabled while using Gatita Ask.</span>
-                </div>
-                <label class="consent-check">
-                    <input id="legalAcceptCheckbox" type="checkbox">
-                    <span>I have read and agree to the <a href="legal.html#terms" target="_blank" rel="noopener noreferrer">Terms of Service</a> and <a href="legal.html#privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>, and I understand required cookies/storage are necessary for this service.</span>
-                </label>
-                <button class="auth-submit" id="legalAcceptButton" type="button" disabled>Accept and continue</button>
-            </div>
-        </section>
-    </div>
-
-    <div class="modal-backdrop safety-backdrop hidden" id="strikeModal" role="dialog" aria-modal="true" aria-labelledby="strikeModalTitle">
-        <section class="auth-modal safety-modal">
-            <div class="safety-icon">
-                <i data-lucide="triangle-alert"></i>
-            </div>
-            <div class="safety-body">
-                <h2 id="strikeModalTitle">Account Strike</h2>
-                <p id="strikeModalMessage">Your account has a strike for attempting to bypass Gatita Ask safety controls.</p>
-                <div class="safety-status" id="strikeModalStatus"></div>
-                <button class="auth-submit" id="strikeAcknowledgeButton" type="button">I understand</button>
-            </div>
-        </section>
-    </div>
-
-    <div class="modal-backdrop safety-backdrop hidden" id="banModal" role="dialog" aria-modal="true" aria-labelledby="banModalTitle">
-        <section class="auth-modal safety-modal banned-modal">
-            <div class="safety-icon danger">
-                <i data-lucide="ban"></i>
-            </div>
-            <div class="safety-body">
-                <h2 id="banModalTitle">Account Permanently Banned</h2>
-                <p id="banModalMessage">This account is permanently banned from Gatita Ask.</p>
-                <button class="auth-submit danger-submit" id="banSignOutButton" type="button">Sign out</button>
-            </div>
-        </section>
-    </div>
-
-    <aside class="cookie-banner hidden" id="cookieBanner" role="status" aria-live="polite">
-        <div>
-            <strong>Required cookies</strong>
-            <p>Gatita Ask uses required cookies and local storage for security, sessions, spam prevention, and saved preferences. There are no optional cookie categories to disable.</p>
+    <div
+      class="modal-backdrop hidden"
+      id="actionModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="actionModalTitle"
+    >
+      <section class="auth-modal action-window">
+        <div class="modal-head">
+          <h2 id="actionModalTitle">Action</h2>
+          <button
+            class="icon-btn"
+            id="actionModalCloseButton"
+            type="button"
+            aria-label="Close" data-i18n-title="account.close"
+          >
+            <i data-lucide="x"></i>
+          </button>
         </div>
-        <button class="small-btn" id="cookieAcceptButton" type="button">Got it</button>
+
+        <form class="action-form" id="actionModalForm">
+          <p class="action-message" id="actionModalMessage"></p>
+          <label class="hidden" id="actionModalInputWrap">
+            <span id="actionModalInputLabel">Name</span>
+            <input id="actionModalInput" type="text" />
+          </label>
+          <label class="hidden" id="actionModalTextareaWrap">
+            <span id="actionModalTextareaLabel">Text</span>
+            <textarea id="actionModalTextarea" rows="8"></textarea>
+          </label>
+          <p class="form-error" id="actionModalError" role="alert"></p>
+          <div class="action-buttons">
+            <button
+              class="small-btn"
+              id="actionModalCancelButton"
+              type="button"
+            >
+              Cancel
+            </button>
+            <button
+              class="auth-submit"
+              id="actionModalSubmitButton"
+              type="submit"
+            >
+              Save
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <div
+      class="modal-backdrop hidden"
+      id="authModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="authTitle"
+    >
+      <section class="auth-modal">
+        <div class="modal-head">
+          <h2 id="authTitle">Account</h2>
+          <button
+            class="icon-btn"
+            id="closeAuthButton"
+            type="button"
+            aria-label="Close" data-i18n-title="account.close"
+          >
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+
+        <div class="auth-tabs" role="tablist">
+          <button class="auth-tab active" type="button" data-auth-mode="login">
+            Sign in
+          </button>
+          <button class="auth-tab" type="button" data-auth-mode="register">
+            Create account
+          </button>
+        </div>
+
+        <form class="auth-form" id="authForm">
+          <label>
+            <span>Email</span>
+            <input id="authEmail" type="email" autocomplete="email" required />
+          </label>
+          <label class="register-only hidden">
+            <span>Display name</span>
+            <input
+              id="authDisplayName"
+              type="text"
+              autocomplete="nickname"
+              maxlength="40"
+            />
+          </label>
+          <label>
+            <span>Password</span>
+            <input
+              id="authPassword"
+              type="password"
+              autocomplete="current-password"
+              required
+              minlength="8"
+            />
+          </label>
+          <div class="browser-check-stack auth-browser-check hidden">
+            <span
+              class="browser-check-status hidden"
+              id="authBrowserCheckStatus"
+              role="status"
+              aria-live="polite"
+            ></span>
+          </div>
+          <p class="form-error" id="authError" role="alert"></p>
+          <button class="auth-submit" type="submit">Continue</button>
+        </form>
+      </section>
+    </div>
+
+    <div
+      class="modal-backdrop hidden"
+      id="accountModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="accountTitle"
+    >
+      <section class="auth-modal account-window">
+        <div class="modal-head">
+          <h2 id="accountTitle" data-i18n="account.settings">Account settings</h2>
+          <button
+            class="icon-btn"
+            id="closeAccountButton"
+            type="button"
+            aria-label="Close" data-i18n-title="account.close"
+          >
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+
+        <div class="account-body">
+          <div class="account-card">
+            <span class="account-label" data-i18n="account.signedInAs">Signed in as</span>
+            <strong id="accountModalName">Account</strong>
+            <span id="accountModalEmail"></span>
+          </div>
+
+          <div class="rate-grid">
+            <div class="rate-card">
+              <span class="account-label" data-i18n="account.messages">Messages</span>
+              <strong id="accountMinuteLimit">-</strong>
+              <span data-i18n="account.minuteLimit">Per-minute limit</span>
+            </div>
+            <div class="rate-card">
+              <span class="account-label" data-i18n="chat.deepResearch">Deep research</span>
+              <strong id="accountDeepLimit">-</strong>
+              <span data-i18n="account.dailyAllowance">Daily allowance</span>
+            </div>
+          </div>
+
+          <label class="account-toggle">
+            <span>
+              <strong>Completion notifications</strong>
+              <small
+                >Get a browser notification when Gatita finishes
+                answering.</small
+              >
+            </span>
+            <input id="notificationsToggle" type="checkbox" />
+            <span class="toggle-track"></span>
+          </label>
+
+          <div class="account-actions">
+            <button class="small-btn" id="accountSignOutButton" type="button">
+              Sign out
+            </button>
+          </div>
+
+          <form class="password-form" id="passwordForm">
+            <label>
+              <span data-i18n="account.currentPassword">Current password</span>
+              <input
+                id="currentPassword"
+                type="password"
+                autocomplete="current-password"
+              />
+            </label>
+            <label>
+              <span data-i18n="account.newPassword">New password</span>
+              <input
+                id="newPassword"
+                type="password"
+                autocomplete="new-password"
+                minlength="8"
+              />
+            </label>
+            <p class="form-error" id="passwordError" role="alert"></p>
+            <button class="auth-submit" type="submit" data-i18n="account.changePassword">Change password</button>
+          </form>
+
+          <form class="delete-account-form" id="deleteAccountForm">
+            <div class="account-danger-card">
+              <span class="account-label" data-i18n="account.dangerZone">Danger zone</span>
+              <strong data-i18n="account.deleteAccount">Delete account</strong>
+              <p>
+                <span data-i18n="account.deleteWarning">Schedules your account and saved chats for deletion. Final deletion happens after 7 days unless you sign back in first.</span>
+              </p>
+            </div>
+            <label>
+              <span data-i18n="account.currentPassword">Current password</span>
+              <input
+                id="deleteAccountPassword"
+                type="password"
+                autocomplete="current-password"
+              />
+            </label>
+            <p
+              class="account-deletion-status hidden"
+              id="accountDeletionStatus"
+            ></p>
+            <p class="form-error" id="deleteAccountError" role="alert"></p>
+            <button
+              class="small-btn danger-action"
+              id="deleteAccountButton"
+              type="submit"
+            ><span data-i18n="account.scheduleDeletion">Schedule account deletion</span></button>
+          </form>
+        </div>
+      </section>
+    </div>
+
+    <div
+      class="modal-backdrop hidden"
+      id="updatesModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="updatesTitle"
+    >
+      <section class="auth-modal updates-window">
+        <div class="modal-head">
+          <h2 id="updatesTitle">Gatita Updates</h2>
+          <button
+            class="icon-btn"
+            id="closeUpdatesButton"
+            type="button"
+            aria-label="Close updates"
+          >
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="updates-body">
+          <form class="updates-admin hidden" id="updatesForm">
+            <label>
+              <span>Title</span>
+              <input
+                id="updateTitleInput"
+                type="text"
+                maxlength="120"
+                placeholder="What changed?"
+              />
+            </label>
+            <label>
+              <span>Post</span>
+              <textarea
+                id="updateContentInput"
+                rows="7"
+                placeholder="Markdown, code blocks, and math are supported."
+              ></textarea>
+            </label>
+            <p class="form-error" id="updatesError" role="alert"></p>
+            <button class="auth-submit" type="submit">Post update</button>
+          </form>
+          <div class="updates-list" id="updatesList"></div>
+        </div>
+      </section>
+    </div>
+
+    <div
+      class="modal-backdrop consent-backdrop hidden"
+      id="notificationPromptModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="notificationPromptTitle"
+    >
+      <section class="auth-modal consent-modal">
+        <div class="modal-head">
+          <h2 id="notificationPromptTitle">Notify When Gatita Is Done?</h2>
+          <button
+            class="icon-btn"
+            id="notificationPromptCloseButton"
+            type="button"
+            aria-label="Close" data-i18n-title="account.close"
+          >
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="consent-body">
+          <p>
+            Gatita can send a browser notification when a response finishes, so
+            you can switch tabs and come back when the answer is ready.
+          </p>
+          <div class="consent-note">
+            <strong>Optional browser permission</strong>
+            <span
+              >Notifications are only used for finished Ask responses. You can
+              turn them off again in the account menu or your browser
+              settings.</span
+            >
+          </div>
+          <div class="notification-actions">
+            <button
+              class="auth-submit"
+              id="notificationEnableButton"
+              type="button"
+            >
+              Enable notifications
+            </button>
+            <button
+              class="small-btn"
+              id="notificationLaterButton"
+              type="button"
+            >
+              Not now
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div
+      class="modal-backdrop consent-backdrop hidden"
+      id="legalGateModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="legalGateTitle"
+    >
+      <section class="auth-modal consent-modal">
+        <div class="modal-head">
+          <h2 id="legalGateTitle">Before You Use Gatita Ask</h2>
+        </div>
+        <div class="consent-body">
+          <p>
+            Gatita Ask requires acceptance of the Terms of Service and Privacy
+            Policy before the chat website can be used in this browser.
+          </p>
+          <div class="consent-note">
+            <strong>Required cookies and storage</strong>
+            <span
+              >Cookies, local storage, browser verification, session tokens, and
+              rate limits are required for login, spam prevention, API
+              protection, saved chats, and abuse prevention. They cannot be
+              disabled while using Gatita Ask.</span
+            >
+          </div>
+          <label class="consent-check">
+            <input id="legalAcceptCheckbox" type="checkbox" />
+            <span
+              >I have read and agree to the
+              <a
+                href="legal.html#terms"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Terms of Service</a
+              >
+              and
+              <a
+                href="legal.html#privacy"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Privacy Policy</a
+              >, and I understand required cookies/storage are necessary for
+              this service.</span
+            >
+          </label>
+          <button
+            class="auth-submit"
+            id="legalAcceptButton"
+            type="button"
+            disabled
+          >
+            Accept and continue
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <div
+      class="modal-backdrop safety-backdrop hidden"
+      id="strikeModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="strikeModalTitle"
+    >
+      <section class="auth-modal safety-modal">
+        <div class="safety-icon">
+          <i data-lucide="triangle-alert"></i>
+        </div>
+        <div class="safety-body">
+          <h2 id="strikeModalTitle">Account Strike</h2>
+          <p id="strikeModalMessage">
+            Your account has a strike for attempting to bypass Gatita Ask safety
+            controls.
+          </p>
+          <div class="safety-status" id="strikeModalStatus"></div>
+          <button
+            class="auth-submit"
+            id="strikeAcknowledgeButton"
+            type="button"
+          >
+            I understand
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <div
+      class="modal-backdrop safety-backdrop hidden"
+      id="banModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="banModalTitle"
+    >
+      <section class="auth-modal safety-modal banned-modal">
+        <div class="safety-icon danger">
+          <i data-lucide="ban"></i>
+        </div>
+        <div class="safety-body">
+          <h2 id="banModalTitle">Account Permanently Banned</h2>
+          <p id="banModalMessage">
+            This account is permanently banned from Gatita Ask.
+          </p>
+          <button
+            class="auth-submit danger-submit"
+            id="banSignOutButton"
+            type="button"
+          >
+            Sign out
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <aside
+      class="cookie-banner hidden"
+      id="cookieBanner"
+      role="status"
+      aria-live="polite"
+    >
+      <div>
+        <strong>Required cookies</strong>
+        <p>
+          Gatita Ask uses required cookies and local storage for security,
+          sessions, spam prevention, and saved preferences. There are no
+          optional cookie categories to disable.
+        </p>
+      </div>
+      <button class="small-btn" id="cookieAcceptButton" type="button">
+        Got it
+      </button>
     </aside>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
     <script>
-        window.MathJax = {
-            tex: {
-                inlineMath: [['$', '$'], ['\\(', '\\)']],
-                displayMath: [['$$', '$$'], ['\\[', '\\]']],
-                processEscapes: true
-            },
-            options: {
-                skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
-            },
-            startup: {
-                typeset: false
-            }
-        };
+      window.MathJax = {
+        tex: {
+          inlineMath: [
+            ["$", "$"],
+            ["\\(", "\\)"],
+          ],
+          displayMath: [
+            ["$$", "$$"],
+            ["\\[", "\\]"],
+          ],
+          processEscapes: true,
+        },
+        options: {
+          skipHtmlTags: [
+            "script",
+            "noscript",
+            "style",
+            "textarea",
+            "pre",
+            "code",
+          ],
+        },
+        startup: {
+          typeset: false,
+        },
+      };
     </script>
     <script src="https://unpkg.com/lucide@latest" defer></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" defer></script>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"
+      defer
+    ></script>
     <script src="app.js" defer></script>
-</body>
+  </body>
 </html>
