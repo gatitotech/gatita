@@ -213,6 +213,15 @@
               </div>
             </div>
             <button
+              class="icon-btn voice-call-open-btn"
+              id="voiceCallButton"
+              type="button"
+              aria-label="Start voice call"
+              title="Voice call beta" data-i18n-title="voice.callBeta"
+            >
+              <i data-lucide="phone-call"></i>
+            </button>
+            <button
               class="settings-button notebook-open-btn"
               id="notebookToggleButton"
               type="button"
@@ -412,6 +421,66 @@
             </button>
           </div>
         </form>
+      </section>
+    </div>
+
+    <div
+      class="modal-backdrop hidden"
+      id="voiceModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="voiceTitle"
+    >
+      <section class="voice-call-window">
+        <div class="voice-call-head">
+          <div>
+            <span class="voice-beta-pill" data-i18n="voice.beta">Voice beta</span>
+            <h2 id="voiceTitle" data-i18n="voice.title">Gatita Call</h2>
+          </div>
+          <button
+            class="icon-btn"
+            id="voiceCloseButton"
+            type="button"
+            aria-label="Close voice call" data-i18n-title="voice.close"
+          >
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+
+        <div class="voice-call-stage">
+          <div class="voice-avatar-shell" aria-hidden="true">
+            <img src="assets/avatar.webp" alt="" width="88" height="88" />
+            <span class="voice-ring"></span>
+          </div>
+          <strong id="voiceStatus">Ready</strong>
+          <span id="voiceSubstatus">Gatita 5.1</span>
+        </div>
+
+        <div
+          class="voice-transcript"
+          id="voiceTranscript"
+          aria-live="polite"
+          aria-label="Voice call transcript"
+        ></div>
+
+        <div class="voice-controls">
+          <button
+            class="voice-control-btn"
+            id="voiceMuteButton"
+            type="button"
+            aria-label="Mute microphone" data-i18n-title="voice.mute"
+          >
+            <i data-lucide="mic"></i>
+          </button>
+          <button
+            class="voice-control-btn voice-end-btn"
+            id="voiceEndButton"
+            type="button"
+            aria-label="End voice call" data-i18n-title="voice.end"
+          >
+            <i data-lucide="phone-off"></i>
+          </button>
+        </div>
       </section>
     </div>
 

@@ -1,9 +1,26 @@
 const LEGACY_API_BASE_KEY = ["CL4", "NKR_ASK_API_BASE"].join("");
 const STORAGE_PREFIX = "gatita_ask_";
 const LEGACY_STORAGE_PREFIX = ["cl4", "nkr_ask_"].join("");
+const API_BASE_OVERRIDE = (() => {
+  try {
+    const fromQuery = new URLSearchParams(window.location.search).get("api");
+    if (fromQuery) {
+      localStorage.setItem(`${STORAGE_PREFIX}api_base`, fromQuery);
+      return fromQuery;
+    }
+    return (
+      localStorage.getItem(`${STORAGE_PREFIX}api_base`) ||
+      localStorage.getItem(`${LEGACY_STORAGE_PREFIX}api_base`) ||
+      ""
+    );
+  } catch (_) {
+    return "";
+  }
+})();
 const API_BASE =
   window.GATITA_ASK_API_BASE ||
   window[LEGACY_API_BASE_KEY] ||
+  API_BASE_OVERRIDE ||
   "https://api.clankr.tech/ask-api";
 const LEGAL_VERSION = "2026-05-23";
 const STREAM_RENDER_INTERVAL_MS = 40;
@@ -11,6 +28,13 @@ const NOTIFICATION_PROMPT_INTERVAL_MS = 30 * 60 * 1000;
 const BROWSER_CHECK_YIELD_EVERY = 150;
 const COMPACT_SHELL_QUERY = "(max-width: 980px)";
 const COMPACT_SHELL_WIDTH = 980;
+const VOICE_TURN_MIN_PAUSE_MS = 1200;
+const VOICE_TURN_LONG_PAUSE_MS = 2800;
+const VOICE_TURN_MAX_PAUSE_MS = 4200;
+const VOICE_CAPTURE_SILENCE_MS = 1150;
+const VOICE_CAPTURE_MIN_MS = 650;
+const VOICE_CAPTURE_MAX_MS = 13000;
+const VOICE_CAPTURE_RMS_THRESHOLD = 0.014;
 const NOTEBOOK_BLOCK_RE =
   /<gatita-notebook\b([^>]*)>([\s\S]*?)<\/gatita-notebook>/gi;
 const NOTEBOOK_PARTIAL_RE = /<gatita-notebook\b[\s\S]*$/i;
@@ -119,6 +143,14 @@ const els = {
   settingsModelName: document.getElementById("settingsModelName"),
   settingsSummary: document.getElementById("settingsSummary"),
   sidebarToggleButton: document.getElementById("sidebarToggleButton"),
+  voiceCallButton: document.getElementById("voiceCallButton"),
+  voiceModal: document.getElementById("voiceModal"),
+  voiceCloseButton: document.getElementById("voiceCloseButton"),
+  voiceMuteButton: document.getElementById("voiceMuteButton"),
+  voiceEndButton: document.getElementById("voiceEndButton"),
+  voiceStatus: document.getElementById("voiceStatus"),
+  voiceSubstatus: document.getElementById("voiceSubstatus"),
+  voiceTranscript: document.getElementById("voiceTranscript"),
   modelSelect: document.getElementById("modelSelect"),
   modelSelectButton: document.getElementById("modelSelectButton"),
   modelSelectValue: document.getElementById("modelSelectValue"),
@@ -250,6 +282,37 @@ const state = {
   openCustomSelect: "",
   activeStreams: new Map(),
   busy: false,
+  voice: {
+    active: false,
+    muted: false,
+    listening: false,
+    thinking: false,
+    speaking: false,
+    pendingText: "",
+    pendingInterim: "",
+    history: [],
+    recognition: null,
+    inputMode: "auto",
+    recognitionStartedAt: 0,
+    recognitionFastEndCount: 0,
+    recognitionHadResult: false,
+    turnTimer: null,
+    restartTimer: null,
+    audio: null,
+    audioUrl: "",
+    requestedStop: false,
+    fallbackNotified: false,
+    captureStream: null,
+    captureContext: null,
+    captureSource: null,
+    captureProcessor: null,
+    captureChunks: [],
+    captureRecording: false,
+    captureStartedAt: 0,
+    captureLastSpeechAt: 0,
+    captureSampleRate: 0,
+    captureBusy: false,
+  },
 };
 
 const prefersReducedMotion = () =>
@@ -2359,6 +2422,42 @@ const renderActivityPanel = (activity) => {
     `;
 };
 
+const renderRawStreamPanel = (message) => {
+  if (!state.user?.isAdmin) return "";
+  const rows = Array.isArray(message?.rawResponses)
+    ? message.rawResponses.filter((item) => item?.text).slice(-400)
+    : [];
+  if (rows.length === 0 && !message?.rawTruncated && !message?.rawStatus)
+    return "";
+
+  const rawText = rows
+    .map((item) => item.text)
+    .join("\n")
+    .trim();
+  const byteCount = Number(message?.rawByteCount || 0);
+  const meta = [
+    rows.length ? `${rows.length} chunk${rows.length === 1 ? "" : "s"}` : "",
+    byteCount ? formatBytes(byteCount) : "",
+    message?.rawTruncated ? "truncated" : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return `
+        <details class="raw-stream-panel">
+            <summary>
+                <span>Raw stream</span>
+                ${meta ? `<small>${escapeHtml(meta)}</small>` : ""}
+            </summary>
+            ${
+              rawText
+                ? `<pre>${escapeHtml(rawText)}</pre>`
+                : `<p>${escapeHtml(message?.rawStatus || "Raw stream is waiting for data.")}</p>`
+            }
+        </details>
+    `;
+};
+
 const renderQueueIndicator = (message) => {
   if (!message?.queueing) return "";
   return `
@@ -2399,10 +2498,12 @@ const renderMessages = () => {
       }
 
       if (message.loading) {
+        const raw = renderRawStreamPanel(message);
         return `
                 <article class="message assistant" data-render-key="${escapeHtml(renderKey)}">
                     <div class="message-stack">
                         ${renderActivityPanel(message.activity)}
+                        ${raw}
                         ${renderQueueIndicator(message)}
                         <div class="bubble loading" aria-label="Loading">
                             <span class="dot"></span><span class="dot"></span><span class="dot"></span>
@@ -2432,6 +2533,8 @@ const renderMessages = () => {
         message.role === "assistant"
           ? renderActivityPanel(message.activity)
           : "";
+      const raw =
+        message.role === "assistant" ? renderRawStreamPanel(message) : "";
       const queue =
         message.role === "assistant" ? renderQueueIndicator(message) : "";
       const notebookEmbeds =
@@ -2459,7 +2562,7 @@ const renderMessages = () => {
 
       return `
             <article class="message ${message.role === "user" ? "user" : "assistant"}${message.streaming ? " streaming" : ""}${entryClass}" data-message-id="${message.id || ""}" data-render-key="${escapeHtml(renderKey)}">
-                <div class="message-stack">${activity}${queue}<div class="bubble">${body}${streaming}${chips}${sources}${notebookEmbeds}</div>${actions}</div>
+                <div class="message-stack">${activity}${raw}${queue}<div class="bubble">${body}${streaming}${chips}${sources}${notebookEmbeds}</div>${actions}</div>
             </article>
         `;
     })
@@ -3236,6 +3339,10 @@ const sendMessage = async (options = {}) => {
       streaming: true,
       loading: true,
       queueing: false,
+      rawResponses: [],
+      rawByteCount: 0,
+      rawTruncated: false,
+      rawStatus: "",
     };
     messageList.push(assistantDraft);
     setMessagesForStreamTarget(streamTarget, messageList);
@@ -3355,6 +3462,37 @@ const sendMessage = async (options = {}) => {
           assistantDraft.sources = data.sources || [];
           assistantDraft.activity.sources =
             data.sources || assistantDraft.activity.sources;
+          if (isStreamTargetActive(streamTarget)) scheduleRenderMessages();
+          return;
+        }
+
+        if (event === "raw_status") {
+          if (!state.user?.isAdmin) return;
+          assistantDraft.rawStatus = String(data.message || "");
+          assistantDraft.rawByteCount = Number(data.totalBytes || assistantDraft.rawByteCount || 0);
+          if (isStreamTargetActive(streamTarget)) scheduleRenderMessages();
+          return;
+        }
+
+        if (event === "raw_response") {
+          if (!state.user?.isAdmin) return;
+          assistantDraft.rawStatus = "";
+          assistantDraft.rawResponses = [
+            ...(assistantDraft.rawResponses || []),
+            {
+              index: Number(data.index || 0),
+              text: String(data.text || ""),
+            },
+          ].slice(-400);
+          assistantDraft.rawByteCount = Number(data.totalBytes || 0);
+          if (isStreamTargetActive(streamTarget)) scheduleRenderMessages();
+          return;
+        }
+
+        if (event === "raw_limit") {
+          if (!state.user?.isAdmin) return;
+          assistantDraft.rawTruncated = Boolean(data.truncated);
+          assistantDraft.rawByteCount = Number(data.totalBytes || 0);
           if (isStreamTargetActive(streamTarget)) scheduleRenderMessages();
           return;
         }
@@ -3493,6 +3631,719 @@ const openAccountModal = () => {
 
 const closeAccountModal = () => {
   hideWithMotion(els.accountModal);
+};
+
+const getSpeechRecognitionConstructor = () =>
+  window.SpeechRecognition || window.webkitSpeechRecognition;
+
+const voiceModelLabel = () =>
+  state.config?.voice?.modelName || "Gatita 5.1";
+
+const voiceInputLabel = () =>
+  state.voice.inputMode === "server"
+    ? "Server speech detection"
+    : voiceModelLabel();
+
+const setVoiceStatus = (status, substatus = voiceModelLabel()) => {
+  if (els.voiceStatus) els.voiceStatus.textContent = status;
+  if (els.voiceSubstatus) els.voiceSubstatus.textContent = substatus;
+};
+
+const isBraveBrowser = async () => {
+  try {
+    return Boolean(await navigator.brave?.isBrave?.());
+  } catch (_) {
+    return Boolean(navigator.brave);
+  }
+};
+
+const hasServerSpeechDetection = () =>
+  state.config?.voice?.stt?.configured !== false;
+
+const getVoiceInputMode = async () => {
+  if (state.voice.inputMode === "server" || state.voice.inputMode === "speech") {
+    return state.voice.inputMode;
+  }
+  const Recognition = getSpeechRecognitionConstructor();
+  if (!Recognition && hasServerSpeechDetection()) return "server";
+  if ((await isBraveBrowser()) && hasServerSpeechDetection()) return "server";
+  return "speech";
+};
+
+const renderVoiceTranscript = () => {
+  if (!els.voiceTranscript) return;
+  const pending = [state.voice.pendingText, state.voice.pendingInterim]
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const rows = [
+    ...state.voice.history,
+    pending ? { role: "user", content: pending, pending: true } : null,
+  ].filter(Boolean);
+
+  els.voiceTranscript.innerHTML = rows.length
+    ? rows
+        .slice(-12)
+        .map(
+          (item) => `
+            <article class="voice-line ${item.role === "assistant" ? "assistant" : "user"}${item.pending ? " pending" : ""}">
+              <span>${item.role === "assistant" ? "Gatita" : "You"}</span>
+              <p>${escapeHtml(item.content)}</p>
+            </article>
+          `,
+        )
+        .join("")
+    : '<p class="voice-empty">Voice beta</p>';
+  els.voiceTranscript.scrollTop = els.voiceTranscript.scrollHeight;
+};
+
+const updateVoiceUi = () => {
+  const active = state.voice.active;
+  const modal = els.voiceModal;
+  modal?.classList.toggle("listening", state.voice.listening);
+  modal?.classList.toggle("thinking", state.voice.thinking);
+  modal?.classList.toggle("speaking", state.voice.speaking);
+  modal?.classList.toggle("muted", state.voice.muted);
+  modal?.classList.toggle("transcribing", state.voice.captureBusy);
+  els.voiceCallButton?.setAttribute("aria-pressed", active ? "true" : "false");
+  if (els.voiceMuteButton) {
+    els.voiceMuteButton.setAttribute(
+      "aria-label",
+      state.voice.muted ? "Unmute microphone" : "Mute microphone",
+    );
+    els.voiceMuteButton.innerHTML = state.voice.muted
+      ? '<i data-lucide="mic-off"></i>'
+      : '<i data-lucide="mic"></i>';
+  }
+
+  if (state.voice.muted) {
+    setVoiceStatus("Muted");
+  } else if (state.voice.speaking) {
+    setVoiceStatus("Speaking");
+  } else if (state.voice.thinking) {
+    setVoiceStatus("Thinking");
+  } else if (state.voice.captureBusy) {
+    setVoiceStatus("Transcribing", "Server speech detection");
+  } else if (state.voice.listening) {
+    setVoiceStatus("Listening", voiceInputLabel());
+  } else if (active) {
+    setVoiceStatus("Ready", voiceInputLabel());
+  }
+  iconRefresh();
+};
+
+const stopVoiceAudio = () => {
+  if (state.voice.audio) {
+    state.voice.audio.pause?.();
+    state.voice.audio.src = "";
+    state.voice.audio = null;
+  }
+  window.speechSynthesis?.cancel?.();
+  state.voice.speaking = false;
+};
+
+const stopVoiceRecognition = () => {
+  state.voice.requestedStop = true;
+  window.clearTimeout(state.voice.restartTimer);
+  try {
+    state.voice.recognition?.stop?.();
+  } catch (_) {}
+  state.voice.listening = false;
+};
+
+const stopVoiceCapture = () => {
+  state.voice.captureRecording = false;
+  state.voice.captureChunks = [];
+  if (state.voice.captureProcessor) {
+    try {
+      state.voice.captureProcessor.disconnect();
+    } catch (_) {}
+  }
+  if (state.voice.captureSource) {
+    try {
+      state.voice.captureSource.disconnect();
+    } catch (_) {}
+  }
+  if (state.voice.captureContext) {
+    try {
+      state.voice.captureContext.close?.();
+    } catch (_) {}
+  }
+  if (state.voice.captureStream) {
+    try {
+      state.voice.captureStream.getTracks?.().forEach((track) => track.stop?.());
+    } catch (_) {}
+  }
+  state.voice.captureStream = null;
+  state.voice.captureContext = null;
+  state.voice.captureSource = null;
+  state.voice.captureProcessor = null;
+  state.voice.captureStartedAt = 0;
+  state.voice.captureLastSpeechAt = 0;
+  state.voice.captureSampleRate = 0;
+  state.voice.listening = false;
+};
+
+const scheduleVoiceRestart = (delay = 350) => {
+  window.clearTimeout(state.voice.restartTimer);
+  if (
+    !state.voice.active ||
+    state.voice.muted ||
+    state.voice.thinking ||
+    state.voice.speaking ||
+    state.voice.captureBusy
+  ) {
+    return;
+  }
+  state.voice.restartTimer = window.setTimeout(() => {
+    startVoiceInput();
+  }, delay);
+};
+
+const isVoiceTurnUnfinished = (text) => {
+  const normalized = String(text || "").trim().toLowerCase();
+  if (!normalized) return true;
+  if (/[,.!?;:]$/.test(normalized)) return false;
+  return /(\b(uh|um|erm|hmm|like|and|or|but|because|so|for|to|a|an|the|of|with|about|on|in|at|from|into|by)|\.\.\.)$/.test(
+    normalized,
+  );
+};
+
+const getVoiceTurnDelay = (text) => {
+  const words = String(text || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (isVoiceTurnUnfinished(text)) return VOICE_TURN_MAX_PAUSE_MS;
+  if (/[.!?]$/.test(text.trim())) return 700;
+  if (words.length >= 10) return VOICE_TURN_MIN_PAUSE_MS;
+  return VOICE_TURN_LONG_PAUSE_MS;
+};
+
+const scheduleVoiceTurnDetection = () => {
+  window.clearTimeout(state.voice.turnTimer);
+  if (!state.voice.active || state.voice.muted || state.voice.thinking) return;
+  const text = state.voice.pendingText.trim();
+  if (!text || state.voice.pendingInterim) return;
+  state.voice.turnTimer = window.setTimeout(() => {
+    const readyText = state.voice.pendingText.trim();
+    if (!readyText || state.voice.pendingInterim || state.voice.thinking) {
+      return;
+    }
+    sendVoiceTurn(readyText).catch((error) => {
+      showToast(error.message || "Voice could not respond.");
+      state.voice.thinking = false;
+      updateVoiceUi();
+      scheduleVoiceRestart();
+    });
+  }, getVoiceTurnDelay(text));
+};
+
+const flattenFloat32Chunks = (chunks) => {
+  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const samples = new Float32Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    samples.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return samples;
+};
+
+const resampleFloat32 = (samples, fromRate, toRate = 16000) => {
+  const inputRate = Number(fromRate || 0);
+  if (!samples.length || !inputRate || Math.abs(inputRate - toRate) < 1) {
+    return samples;
+  }
+  const outputLength = Math.max(1, Math.round((samples.length * toRate) / inputRate));
+  const output = new Float32Array(outputLength);
+  const ratio = inputRate / toRate;
+  for (let index = 0; index < outputLength; index += 1) {
+    const sourceIndex = index * ratio;
+    const left = Math.floor(sourceIndex);
+    const right = Math.min(samples.length - 1, left + 1);
+    const mix = sourceIndex - left;
+    output[index] = samples[left] * (1 - mix) + samples[right] * mix;
+  }
+  return output;
+};
+
+const float32ToPcm16Base64 = (samples) => {
+  const buffer = new ArrayBuffer(samples.length * 2);
+  const view = new DataView(buffer);
+  for (let index = 0; index < samples.length; index += 1) {
+    const sample = Math.max(-1, Math.min(1, samples[index]));
+    view.setInt16(
+      index * 2,
+      sample < 0 ? sample * 0x8000 : sample * 0x7fff,
+      true,
+    );
+  }
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return btoa(binary);
+};
+
+const transcribeVoiceAudio = async (chunks, sampleRate) => {
+  const samples = flattenFloat32Chunks(chunks);
+  if (!samples.length) return "";
+  const targetSampleRate = 16000;
+  const normalizedSamples = resampleFloat32(samples, sampleRate, targetSampleRate);
+  const audioPcm = float32ToPcm16Base64(normalizedSamples);
+  if (state.config?.browserCheckRequired && !hasRecentBrowserCheckPass()) {
+    await ensureBrowserCheckProof("message");
+  }
+  const data = await apiFetch("/voice/transcribe", {
+    method: "POST",
+    body: JSON.stringify({
+      audioPcm,
+      sampleRateHertz: targetSampleRate,
+      languageCode: navigator.language || navigator.userLanguage || "en-US",
+      browserProof: state.browserProof,
+    }),
+  });
+  if (data.accountStatus) updateAccountStatus(data.accountStatus);
+  rememberBrowserCheckPass();
+  resetBrowserCheck("message");
+  return String(data.text || "").trim();
+};
+
+async function finalizeVoiceCapture() {
+  if (!state.voice.captureRecording || state.voice.captureBusy) return;
+
+  const chunks = state.voice.captureChunks.slice();
+  const sampleRate = state.voice.captureSampleRate || 16000;
+  const elapsed = performance.now() - state.voice.captureStartedAt;
+  state.voice.captureRecording = false;
+  state.voice.captureChunks = [];
+  if (!chunks.length || elapsed < VOICE_CAPTURE_MIN_MS) return;
+
+  state.voice.captureBusy = true;
+  stopVoiceCapture();
+  updateVoiceUi();
+  setVoiceStatus("Transcribing", "Server speech detection");
+
+  try {
+    const text = await transcribeVoiceAudio(chunks, sampleRate);
+    if (text) {
+      await sendVoiceTurn(text);
+      return;
+    }
+    setVoiceStatus("Could not hear that", "Try speaking a little closer");
+  } catch (error) {
+    state.voice.thinking = false;
+    showToast(error.message || "Voice transcription could not start.");
+    renderVoiceTranscript();
+    updateVoiceUi();
+    setVoiceStatus("Voice paused", "Tap the mic to resume");
+  } finally {
+    state.voice.captureBusy = false;
+    updateVoiceUi();
+    if (
+      state.voice.active &&
+      !state.voice.muted &&
+      !state.voice.thinking &&
+      !state.voice.speaking
+    ) {
+      scheduleVoiceRestart(450);
+    }
+  }
+}
+
+function handleVoiceAudioProcess(event) {
+  const output = event.outputBuffer?.getChannelData?.(0);
+  if (output) output.fill(0);
+  if (
+    !state.voice.active ||
+    state.voice.muted ||
+    state.voice.thinking ||
+    state.voice.speaking ||
+    state.voice.captureBusy
+  ) {
+    return;
+  }
+
+  const input = event.inputBuffer?.getChannelData?.(0);
+  if (!input?.length) return;
+
+  let sum = 0;
+  for (let index = 0; index < input.length; index += 1) {
+    sum += input[index] * input[index];
+  }
+  const now = performance.now();
+  const rms = Math.sqrt(sum / input.length);
+  const hasSpeech = rms >= VOICE_CAPTURE_RMS_THRESHOLD;
+
+  if (hasSpeech) {
+    state.voice.captureLastSpeechAt = now;
+    if (!state.voice.captureRecording) {
+      state.voice.captureRecording = true;
+      state.voice.captureStartedAt = now;
+      state.voice.captureChunks = [];
+    }
+  }
+
+  if (!state.voice.captureRecording) return;
+
+  state.voice.captureChunks.push(new Float32Array(input));
+  const elapsed = now - state.voice.captureStartedAt;
+  const silence = now - state.voice.captureLastSpeechAt;
+  const hasCompletePause =
+    elapsed >= VOICE_CAPTURE_MIN_MS && silence >= VOICE_CAPTURE_SILENCE_MS;
+  if (hasCompletePause || elapsed >= VOICE_CAPTURE_MAX_MS) {
+    finalizeVoiceCapture().catch((error) => {
+      showToast(error.message || "Voice transcription could not start.");
+      state.voice.captureBusy = false;
+      scheduleVoiceRestart(450);
+    });
+  }
+}
+
+async function startVoiceCapture() {
+  if (
+    !state.voice.active ||
+    state.voice.muted ||
+    state.voice.thinking ||
+    state.voice.speaking ||
+    state.voice.captureBusy
+  ) {
+    return false;
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    setVoiceStatus("Microphone unavailable", "Use a browser with mic capture");
+    return false;
+  }
+  if (state.voice.captureStream) {
+    state.voice.listening = true;
+    updateVoiceUi();
+    return true;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextCtor) throw new Error("Audio capture is unavailable.");
+    const context = new AudioContextCtor();
+    await context.resume?.();
+    const source = context.createMediaStreamSource(stream);
+    const processor = context.createScriptProcessor(2048, 1, 1);
+    processor.onaudioprocess = handleVoiceAudioProcess;
+    source.connect(processor);
+    processor.connect(context.destination);
+
+    state.voice.requestedStop = false;
+    state.voice.captureStream = stream;
+    state.voice.captureContext = context;
+    state.voice.captureSource = source;
+    state.voice.captureProcessor = processor;
+    state.voice.captureSampleRate = context.sampleRate || 16000;
+    state.voice.listening = true;
+    state.voice.recognitionFastEndCount = 0;
+    updateVoiceUi();
+    return true;
+  } catch (error) {
+    state.voice.muted = true;
+    state.voice.listening = false;
+    updateVoiceUi();
+    setVoiceStatus("Microphone blocked", "Check browser permissions");
+    return false;
+  }
+}
+
+async function startVoiceInput() {
+  if (
+    !state.voice.active ||
+    state.voice.muted ||
+    state.voice.thinking ||
+    state.voice.speaking ||
+    state.voice.captureBusy
+  ) {
+    return false;
+  }
+  const mode = await getVoiceInputMode();
+  state.voice.inputMode = mode;
+  if (mode === "server") return startVoiceCapture();
+  return startVoiceRecognition();
+}
+
+const ensureVoiceRecognition = () => {
+  if (state.voice.recognition) return state.voice.recognition;
+  const Recognition = getSpeechRecognitionConstructor();
+  if (!Recognition) return null;
+  const recognition = new Recognition();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = navigator.language || navigator.userLanguage || "en-US";
+
+  recognition.onstart = () => {
+    state.voice.requestedStop = false;
+    state.voice.recognitionStartedAt = performance.now();
+    state.voice.recognitionHadResult = false;
+    state.voice.listening = true;
+    updateVoiceUi();
+  };
+
+  recognition.onresult = (event) => {
+    if (!state.voice.active || state.voice.thinking || state.voice.speaking) {
+      return;
+    }
+    state.voice.recognitionHadResult = true;
+    state.voice.recognitionFastEndCount = 0;
+    let finalText = "";
+    let interimText = "";
+    for (let index = event.resultIndex; index < event.results.length; index++) {
+      const result = event.results[index];
+      const transcript = result?.[0]?.transcript || "";
+      if (result.isFinal) finalText += ` ${transcript}`;
+      else interimText += ` ${transcript}`;
+    }
+    if (finalText.trim()) {
+      state.voice.pendingText = [state.voice.pendingText, finalText]
+        .filter(Boolean)
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+    state.voice.pendingInterim = interimText.replace(/\s+/g, " ").trim();
+    renderVoiceTranscript();
+    scheduleVoiceTurnDetection();
+  };
+
+  recognition.onerror = (event) => {
+    if (state.voice.requestedStop) return;
+    if (event.error === "no-speech") {
+      scheduleVoiceRestart(500);
+      return;
+    }
+    if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+      state.voice.muted = true;
+      state.voice.listening = false;
+      updateVoiceUi();
+      setVoiceStatus("Microphone blocked", "Check browser permissions");
+    } else {
+      state.voice.listening = false;
+      updateVoiceUi();
+      setVoiceStatus("Voice paused", "Tap the mic to resume");
+    }
+  };
+
+  recognition.onend = () => {
+    const endedQuickly =
+      performance.now() - Number(state.voice.recognitionStartedAt || 0) < 900;
+    state.voice.listening = false;
+    updateVoiceUi();
+    if (
+      !state.voice.requestedStop &&
+      endedQuickly &&
+      !state.voice.recognitionHadResult &&
+      hasServerSpeechDetection()
+    ) {
+      state.voice.recognitionFastEndCount += 1;
+      if (state.voice.recognitionFastEndCount >= 2) {
+        state.voice.inputMode = "server";
+        setVoiceStatus("Listening", "Server speech detection");
+        startVoiceInput();
+        return;
+      }
+    }
+    if (!state.voice.requestedStop) scheduleVoiceRestart();
+  };
+
+  state.voice.recognition = recognition;
+  return recognition;
+};
+
+function startVoiceRecognition() {
+  const recognition = ensureVoiceRecognition();
+  if (!recognition) {
+    setVoiceStatus("Speech unavailable", "Use Chrome or Edge for voice beta");
+    return false;
+  }
+  if (
+    !state.voice.active ||
+    state.voice.muted ||
+    state.voice.thinking ||
+    state.voice.speaking ||
+    state.voice.listening
+  ) {
+    return false;
+  }
+  try {
+    state.voice.requestedStop = false;
+    recognition.start();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+const speakWithBrowserFallback = (text) =>
+  new Promise((resolve) => {
+    if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) {
+      resolve();
+      return;
+    }
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      resolve();
+    };
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = navigator.language || "en-US";
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.onend = finish;
+    utterance.onerror = finish;
+    const timer = window.setTimeout(
+      finish,
+      Math.min(12000, Math.max(1600, String(text || "").length * 70)),
+    );
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  });
+
+const playVoiceReply = async (text, audio) => {
+  stopVoiceAudio();
+  state.voice.speaking = true;
+  updateVoiceUi();
+
+  if (audio?.data && audio?.contentType) {
+    const player = new Audio(`data:${audio.contentType};base64,${audio.data}`);
+    state.voice.audio = player;
+    await new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        resolve();
+      };
+      const timer = window.setTimeout(finish, 45000);
+      player.onended = finish;
+      player.onerror = finish;
+      player.play().catch(finish);
+    });
+  } else {
+    await speakWithBrowserFallback(text);
+  }
+
+  state.voice.speaking = false;
+  state.voice.audio = null;
+  updateVoiceUi();
+  scheduleVoiceRestart();
+};
+
+async function sendVoiceTurn(text) {
+  const message = text.trim();
+  if (!message || state.voice.thinking) return;
+  stopVoiceRecognition();
+  stopVoiceCapture();
+  state.voice.pendingText = "";
+  state.voice.pendingInterim = "";
+  const historyBeforeTurn = state.voice.history.slice(-8);
+  state.voice.history.push({ role: "user", content: message });
+  state.voice.thinking = true;
+  renderVoiceTranscript();
+  updateVoiceUi();
+
+  if (state.config?.browserCheckRequired && !hasRecentBrowserCheckPass()) {
+    await ensureBrowserCheckProof("message");
+  }
+
+  const data = await apiFetch("/voice/respond", {
+    method: "POST",
+    body: JSON.stringify({
+      message,
+      history: historyBeforeTurn,
+      displayName: state.user?.displayName || state.user?.email || "Guest",
+      userLanguage: navigator.language || navigator.userLanguage || "en-US",
+      browserProof: state.browserProof,
+    }),
+  });
+
+  state.voice.thinking = false;
+  if (data.accountStatus) updateAccountStatus(data.accountStatus);
+  if (data.usage) updateUsage(data.usage);
+  rememberBrowserCheckPass();
+  resetBrowserCheck("message");
+
+  if (data.policyViolation) {
+    const policyText =
+      data.policyViolation.message || "That request is not available in voice.";
+    state.voice.history.push({ role: "assistant", content: policyText });
+    renderVoiceTranscript();
+    updateVoiceUi();
+    await playVoiceReply(policyText, null);
+    return;
+  }
+
+  const reply = data.message?.content || "I could not answer that.";
+  state.voice.history.push({ role: "assistant", content: reply });
+  renderVoiceTranscript();
+  updateVoiceUi();
+  if (data.ttsError && !data.audio && !state.voice.fallbackNotified) {
+    state.voice.fallbackNotified = true;
+    showToast("Server voice is in fallback mode.");
+  }
+  await playVoiceReply(reply, data.audio);
+}
+
+const openVoiceCall = async () => {
+  state.voice.active = true;
+  state.voice.muted = false;
+  state.voice.inputMode = "auto";
+  state.voice.recognitionFastEndCount = 0;
+  state.voice.recognitionHadResult = false;
+  state.voice.pendingText = "";
+  state.voice.pendingInterim = "";
+  showWithMotion(els.voiceModal);
+  hideSidebarForActiveChat();
+  renderVoiceTranscript();
+  updateVoiceUi();
+  await startVoiceInput();
+};
+
+const closeVoiceCall = () => {
+  state.voice.active = false;
+  state.voice.muted = false;
+  state.voice.thinking = false;
+  state.voice.pendingText = "";
+  state.voice.pendingInterim = "";
+  window.clearTimeout(state.voice.turnTimer);
+  stopVoiceRecognition();
+  stopVoiceCapture();
+  stopVoiceAudio();
+  state.voice.inputMode = "auto";
+  state.voice.captureBusy = false;
+  state.voice.recognitionFastEndCount = 0;
+  state.voice.recognitionHadResult = false;
+  hideWithMotion(els.voiceModal);
+  updateVoiceUi();
+};
+
+const toggleVoiceMute = () => {
+  if (!state.voice.active) return;
+  state.voice.muted = !state.voice.muted;
+  if (state.voice.muted) {
+    stopVoiceRecognition();
+    stopVoiceCapture();
+  } else {
+    startVoiceInput();
+  }
+  updateVoiceUi();
 };
 
 const isCompactViewport = () =>
@@ -3960,6 +4811,13 @@ els.settingsMenu.addEventListener("click", (event) => {
 });
 
 els.sidebarToggleButton.addEventListener("click", toggleSidebar);
+els.voiceCallButton?.addEventListener("click", openVoiceCall);
+els.voiceCloseButton?.addEventListener("click", closeVoiceCall);
+els.voiceEndButton?.addEventListener("click", closeVoiceCall);
+els.voiceMuteButton?.addEventListener("click", toggleVoiceMute);
+els.voiceModal?.addEventListener("click", (event) => {
+  if (event.target === els.voiceModal) closeVoiceCall();
+});
 els.updatesButton.addEventListener("click", () => {
   openUpdatesModal();
 });
@@ -4212,6 +5070,7 @@ document.addEventListener("keydown", (event) => {
     closeNotificationPrompt();
   if (!els.updatesModal.classList.contains("hidden")) closeUpdatesModal();
   if (!els.accountModal.classList.contains("hidden")) closeAccountModal();
+  if (!els.voiceModal.classList.contains("hidden")) closeVoiceCall();
   if (!els.authModal.classList.contains("hidden")) closeAuthModal();
   if (state.notebookOpen) closeNotebookPanel();
 });
