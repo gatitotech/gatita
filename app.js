@@ -162,8 +162,8 @@ const els = {
   thinkingToggle: document.getElementById("thinkingToggle"),
   researchToggle: document.getElementById("researchToggle"),
   autoWebToggle: document.createElement("input"),
-  temporaryToggle: document.getElementById("temporaryToggle"),
   deepResearchToggle: document.getElementById("deepResearchToggle"),
+  agenticToggle: document.getElementById("agenticToggle"),
   updatesButton: document.getElementById("updatesButton"),
   updatesModal: document.getElementById("updatesModal"),
   closeUpdatesButton: document.getElementById("closeUpdatesButton"),
@@ -261,6 +261,7 @@ const state = {
   activeSharedToken: "",
   temporaryMode: false,
   temporaryMessages: [],
+  agenticChat: false,
   updates: [],
   chatSearch: "",
   editingMessageId: null,
@@ -1145,6 +1146,7 @@ const updateAccount = () => {
     setGuestLockedToggle(els.researchToggle, false);
     setGuestLockedToggle(els.autoWebToggle, false);
     setGuestLockedToggle(els.deepResearchToggle, false);
+    setGuestLockedToggle(els.agenticToggle, false);
   } else {
     els.accountName.textContent = "Guest";
     setAvatar(null, "Guest");
@@ -1158,10 +1160,12 @@ const updateAccount = () => {
     els.researchToggle.checked = false;
     els.autoWebToggle.checked = false;
     els.deepResearchToggle.checked = false;
+    els.agenticToggle.checked = false;
     setGuestLockedToggle(els.thinkingToggle, true);
     setGuestLockedToggle(els.researchToggle, true);
     setGuestLockedToggle(els.autoWebToggle, true);
     setGuestLockedToggle(els.deepResearchToggle, true);
+    setGuestLockedToggle(els.agenticToggle, true);
   }
   renderAccountWindow();
   renderUpdates();
@@ -1178,6 +1182,7 @@ const renderSelects = () => {
   const savedResearch = storageGet("research") === "1";
   const savedAutoWeb = storageGet("auto_web") === "1";
   const savedDeepResearch = storageGet("deep_research") === "1";
+  const savedAgenticChat = storageGet("agentic_chat") === "1";
 
   els.modelSelect.innerHTML = models
     .map((model) => `<option value="${model.id}">${model.name}</option>`)
@@ -1200,8 +1205,8 @@ const renderSelects = () => {
   els.thinkingToggle.checked = savedThinking && Boolean(state.user);
   els.researchToggle.checked = savedResearch && Boolean(state.user);
   els.autoWebToggle.checked = savedAutoWeb && Boolean(state.user);
-  els.temporaryToggle.checked = state.temporaryMode;
   els.deepResearchToggle.checked = savedDeepResearch && Boolean(state.user);
+  els.agenticToggle.checked = savedAgenticChat && Boolean(state.user);
   renderCustomSelect("model");
   renderCustomSelect("personality");
   updateSettingsSummary();
@@ -1218,7 +1223,7 @@ const updateSettingsSummary = () => {
       : els.researchToggle.checked
         ? "Research"
         : "",
-    state.temporaryMode ? "Temporary" : "",
+    els.agenticToggle.checked ? "Gatita Agent" : "",
   ].filter(Boolean);
   if (els.settingsModelName) els.settingsModelName.textContent = modelName;
 
@@ -1523,6 +1528,84 @@ const stripNotebookBlocks = (value) =>
     .replace(NOTEBOOK_PARTIAL_RE, "")
     .trim();
 
+const TOOL_BLOCK_RE = /<gatita-tool\b([\s\S]*?)<\/gatita-tool>/gi;
+const TOOL_RESULT_RE = /<gatita-tool-result\b([\s\S]*?)<\/gatita-tool-result>/gi;
+const TOOL_PARTIAL_RE = /<gatita-tool\b[\s\S]*$/i;
+const TOOL_RESULT_PARTIAL_RE = /<gatita-tool-result\b[\s\S]*$/i;
+
+const stripToolBlocks = (value) =>
+  String(value || "")
+    .replace(TOOL_BLOCK_RE, "")
+    .replace(TOOL_RESULT_RE, "")
+    .replace(TOOL_PARTIAL_RE, "")
+    .replace(TOOL_RESULT_PARTIAL_RE, "")
+    .trim();
+
+const parseToolBlock = (raw) => {
+  const text = String(raw || "");
+  TOOL_BLOCK_RE.lastIndex = 0;
+  const matches = [...text.matchAll(TOOL_BLOCK_RE)];
+  if (matches.length === 0) return null;
+  const last = matches[matches.length - 1];
+  try {
+    const parsed = JSON.parse(String(last[1] || "").trim());
+    if (parsed && typeof parsed.tool === "string") return parsed;
+  } catch (_) {}
+  return null;
+};
+
+const guessPartialToolBlock = (raw) => {
+  const text = String(raw || "");
+  if (!/<gatita-tool\b/i.test(text)) return null;
+  if (/"tool"\s*:\s*"search"/i.test(text)) return { tool: "search" };
+  if (/"tool"\s*:\s*"research"/i.test(text)) return { tool: "research" };
+  if (/"tool"\s*:\s*"think"/i.test(text)) return { tool: "think" };
+  if (/"tool"\s*:\s*"summarize"/i.test(text)) return { tool: "summarize" };
+  return { tool: "think" };
+};
+
+const describeToolActivity = (toolCall) => {
+  if (!toolCall || typeof toolCall !== "object") return null;
+  const tool = String(toolCall.tool || "").trim().toLowerCase();
+  if (!tool) return null;
+  if (tool === "search") {
+    const query = String(toolCall.query || "").trim();
+    return {
+      kind: "research",
+      label: "Research",
+      summary: query ? `Searching: ${query.slice(0, 120)}` : "Searching the web",
+    };
+  }
+  if (tool === "research") {
+    const topic = String(toolCall.topic || "").trim();
+    return {
+      kind: "research",
+      label: "Research",
+      summary: topic ? `Researching: ${topic.slice(0, 120)}` : "Researching the topic",
+    };
+  }
+  if (tool === "think") {
+    const content = String(toolCall.content || "").trim();
+    return {
+      kind: "thinking",
+      label: "Thinking",
+      summary: content ? content.slice(0, 120) : "Thinking through the answer",
+    };
+  }
+  if (tool === "summarize") {
+    return {
+      kind: "thinking",
+      label: "Thinking",
+      summary: "Summarizing information",
+    };
+  }
+  return {
+    kind: "thinking",
+    label: "Thinking",
+    summary: "Working through the answer",
+  };
+};
+
 const getNotebookActions = (message) => {
   const noticeActions = message?.notice?.notebookActions;
   if (Array.isArray(noticeActions) && noticeActions.length > 0)
@@ -1531,7 +1614,7 @@ const getNotebookActions = (message) => {
 };
 
 const getVisibleMessageContent = (message) =>
-  stripNotebookBlocks(message?.content || "");
+  stripToolBlocks(stripNotebookBlocks(message?.content || ""));
 
 const notebookStorageKeyForChat = (chatId) => `notebook_chat_${Number(chatId)}`;
 
@@ -2354,6 +2437,30 @@ const renderSources = (sources) => {
     `;
 };
 
+const normalizeActivityEntry = (item, fallbackSummary = "") => {
+  if (!item) return null;
+  if (typeof item === "string") {
+    const text = String(item || "").trim();
+    if (!text) return null;
+    return {
+      summary: text,
+      detail: text,
+    };
+  }
+
+  const summary = String(item.summary || item.message || fallbackSummary || "")
+    .trim()
+    .slice(0, 140);
+  const detail = String(item.message || item.detail || summary || "")
+    .trim()
+    .slice(0, 220);
+  if (!summary && !detail) return null;
+  return {
+    summary: summary || detail,
+    detail: detail || summary,
+  };
+};
+
 const getMarkdownHtml = (message) => {
   const content = getVisibleMessageContent(message);
   if (message._markdownSource === content && message._markdownHtml) {
@@ -2367,10 +2474,10 @@ const getMarkdownHtml = (message) => {
 const renderActivityPanel = (activity) => {
   if (!activity) return "";
   const thinking = Array.isArray(activity.thinking)
-    ? activity.thinking.slice(-3)
+    ? activity.thinking.slice(-1)
     : [];
   const research = Array.isArray(activity.research)
-    ? activity.research.slice(-4)
+    ? activity.research.slice(-1)
     : [];
   const sources = Array.isArray(activity.sources)
     ? activity.sources.slice(-6)
@@ -2378,28 +2485,38 @@ const renderActivityPanel = (activity) => {
   if (thinking.length === 0 && research.length === 0 && sources.length === 0)
     return "";
 
+  const latestThinking = normalizeActivityEntry(
+    thinking[thinking.length - 1],
+    "Thinking",
+  );
+  const latestResearch = normalizeActivityEntry(
+    research[research.length - 1],
+    "Researching",
+  );
+
   return `
-        <div class="activity-panel">
+        <div class="activity-panel activity-inline-panel">
             ${
-              thinking.length
+              latestThinking
                 ? `
-                <section>
-                    <span class="activity-title">Thinking</span>
-                    ${thinking.map((item) => `<p>${escapeHtml(item)}</p>`).join("")}
-                </section>
+                <p class="activity-inline activity-inline-thinking" aria-live="polite">
+                    <span class="activity-inline-label">Thinking</span>
+                    <span class="activity-inline-summary">${escapeHtml(latestThinking.summary)}</span>
+                </p>
             `
                 : ""
             }
             ${
-              research.length || sources.length
+              latestResearch || sources.length
                 ? `
-                <section>
-                    <span class="activity-title">Research</span>
-                    ${research.map((item) => `<p>${escapeHtml(item)}</p>`).join("")}
-                    ${
-                      sources.length
-                        ? `
-                        <div class="activity-sites">
+                <p class="activity-inline activity-inline-research" aria-live="polite">
+                    <span class="activity-inline-label">Research</span>
+                    <span class="activity-inline-summary">${escapeHtml(latestResearch?.summary || "Checking sources")}</span>
+                </p>
+                ${
+                  sources.length
+                    ? `
+                        <div class="activity-sites activity-sites-inline">
                             ${sources
                               .map(
                                 (source) => `
@@ -2412,9 +2529,8 @@ const renderActivityPanel = (activity) => {
                               .join("")}
                         </div>
                     `
-                        : ""
-                    }
-                </section>
+                    : ""
+                }
             `
                 : ""
             }
@@ -2502,10 +2618,10 @@ const renderMessages = () => {
         return `
                 <article class="message assistant" data-render-key="${escapeHtml(renderKey)}">
                     <div class="message-stack">
-                        ${renderActivityPanel(message.activity)}
                         ${raw}
                         ${renderQueueIndicator(message)}
                         <div class="bubble loading" aria-label="Loading">
+                            ${renderActivityPanel(message.activity)}
                             <span class="dot"></span><span class="dot"></span><span class="dot"></span>
                         </div>
                     </div>
@@ -2562,7 +2678,7 @@ const renderMessages = () => {
 
       return `
             <article class="message ${message.role === "user" ? "user" : "assistant"}${message.streaming ? " streaming" : ""}${entryClass}" data-message-id="${message.id || ""}" data-render-key="${escapeHtml(renderKey)}">
-                <div class="message-stack">${activity}${raw}${queue}<div class="bubble">${body}${streaming}${chips}${sources}${notebookEmbeds}</div>${actions}</div>
+                <div class="message-stack">${raw}${queue}<div class="bubble">${activity}${body}${streaming}${chips}${sources}${notebookEmbeds}</div>${actions}</div>
             </article>
         `;
     })
@@ -2899,6 +3015,9 @@ const fetchMe = async () => {
   if (state.user && storageGet("auto_web") === "1") {
     els.autoWebToggle.checked = true;
   }
+  if (state.user && storageGet("agentic_chat") === "1") {
+    els.agenticToggle.checked = true;
+  }
   if (state.user && storageGet("research") === "1") {
     els.researchToggle.checked = true;
   }
@@ -2934,7 +3053,6 @@ const createChat = async ({
   state.activeChatId = data.chat.id;
   state.activeSharedToken = "";
   state.temporaryMode = false;
-  els.temporaryToggle.checked = false;
   state.chats = [
     data.chat,
     ...state.chats.filter((chat) => chat.id !== data.chat.id),
@@ -2966,7 +3084,6 @@ const loadMessages = async (chatId) => {
   state.activeChatId = Number(chatId);
   state.activeSharedToken = "";
   state.temporaryMode = false;
-  els.temporaryToggle.checked = false;
   state.notebook = loadNotebook();
   state.notebookDrafts = new Map();
   const stream = state.activeStreams.get(chatStreamKey(chatId));
@@ -3034,7 +3151,6 @@ const loadSharedChat = async (token) => {
   state.activeChatId = null;
   state.activeSharedToken = token;
   state.temporaryMode = false;
-  els.temporaryToggle.checked = false;
   state.notebook = emptyNotebook();
   state.notebookDrafts = new Map();
   state.messages = data.messages || [];
@@ -3050,7 +3166,6 @@ const startNewChat = () => {
   state.activeChatId = null;
   state.activeSharedToken = "";
   state.temporaryMode = false;
-  els.temporaryToggle.checked = false;
   state.messages = [];
   state.notebook = emptyNotebook();
   state.notebookDrafts = new Map();
@@ -3070,7 +3185,6 @@ const startTemporaryChat = () => {
   state.activeChatId = null;
   state.activeSharedToken = "";
   state.temporaryMode = true;
-  els.temporaryToggle.checked = true;
   state.messages = state.temporaryMessages;
   state.notebook = emptyNotebook();
   state.notebookDrafts = new Map();
@@ -3222,13 +3336,15 @@ const sendMessage = async (options = {}) => {
     (els.thinkingToggle.checked ||
       els.researchToggle.checked ||
       els.autoWebToggle.checked ||
-      els.deepResearchToggle.checked) &&
+      els.deepResearchToggle.checked ||
+      els.agenticToggle.checked) &&
     !state.user
   ) {
     els.thinkingToggle.checked = false;
     els.researchToggle.checked = false;
     els.autoWebToggle.checked = false;
     els.deepResearchToggle.checked = false;
+    els.agenticToggle.checked = false;
     state.messages.push({
       type: "policy",
       content:
@@ -3368,6 +3484,7 @@ const sendMessage = async (options = {}) => {
       ),
       autoWeb: Boolean(state.user && els.autoWebToggle.checked),
       deepResearch: Boolean(state.user && els.deepResearchToggle.checked),
+      agenticChat: Boolean(state.user && els.agenticToggle.checked),
       regenerateMessageId: options.regenerateMessageId || undefined,
       resendMessageId: options.resendMessageId || undefined,
       displayName: state.user?.displayName || state.user?.email || "Guest",
@@ -3426,9 +3543,10 @@ const sendMessage = async (options = {}) => {
         if (event === "research_status") {
           assistantDraft.loading = false;
           assistantDraft.queueing = false;
-          assistantDraft.activity.research.push(
-            data.message || "Researching...",
-          );
+          assistantDraft.activity.research.push({
+            message: data.message || "Researching...",
+            summary: data.summary || data.message || "Researching...",
+          });
           assistantDraft.activity.research =
             assistantDraft.activity.research.slice(-8);
           if (isStreamTargetActive(streamTarget)) scheduleRenderMessages();
@@ -3438,7 +3556,10 @@ const sendMessage = async (options = {}) => {
         if (event === "thinking_status") {
           assistantDraft.loading = false;
           assistantDraft.queueing = false;
-          assistantDraft.activity.thinking.push(data.message || "Thinking...");
+          assistantDraft.activity.thinking.push({
+            message: data.message || "Thinking...",
+            summary: data.summary || data.message || "Thinking...",
+          });
           assistantDraft.activity.thinking =
             assistantDraft.activity.thinking.slice(-6);
           if (isStreamTargetActive(streamTarget)) scheduleRenderMessages();
@@ -3501,6 +3622,26 @@ const sendMessage = async (options = {}) => {
           assistantDraft.loading = false;
           assistantDraft.queueing = false;
           assistantDraft.content += data.delta || "";
+          const visibleContent = getVisibleMessageContent(assistantDraft);
+          const toolCall =
+            parseToolBlock(assistantDraft.content) ||
+            guessPartialToolBlock(assistantDraft.content);
+          const toolActivity = describeToolActivity(toolCall);
+          if (toolActivity && !visibleContent.trim()) {
+            assistantDraft.activity.thinking = [];
+            assistantDraft.activity.research = [];
+            assistantDraft.activity.sources = [];
+            assistantDraft.activity[toolActivity.kind] = [
+              {
+                message: toolActivity.summary,
+                summary: toolActivity.summary,
+              },
+            ];
+          } else if (visibleContent.trim()) {
+            assistantDraft.activity.thinking = [];
+            assistantDraft.activity.research = [];
+            assistantDraft.activity.sources = [];
+          }
           if (
             isStreamTargetActive(streamTarget) &&
             !updateStreamingMessageContent(assistantDraft)
@@ -3522,6 +3663,9 @@ const sendMessage = async (options = {}) => {
           assistantDraft.loading = false;
           assistantDraft.streaming = false;
           assistantDraft.queueing = false;
+          assistantDraft.activity.thinking = [];
+          assistantDraft.activity.research = [];
+          assistantDraft.activity.sources = [];
           assistantDraft.content =
             getVisibleMessageContent(assistantDraft) || "Stopped.";
           return;
@@ -3555,12 +3699,18 @@ const sendMessage = async (options = {}) => {
         streaming: false,
         queueing: false,
       });
+      assistantDraft.activity.thinking = [];
+      assistantDraft.activity.research = [];
+      assistantDraft.activity.sources = [];
       processNotebookActionsForMessage(assistantDraft);
       notifyGenerationDone(streamTarget, assistantDraft);
     } else {
       assistantDraft.loading = false;
       assistantDraft.streaming = false;
       assistantDraft.queueing = false;
+      assistantDraft.activity.thinking = [];
+      assistantDraft.activity.research = [];
+      assistantDraft.activity.sources = [];
     }
     setMessagesForStreamTarget(streamTarget, messageList);
 
@@ -4423,7 +4573,6 @@ const submitAuth = async () => {
     state.activeChatId = null;
     state.activeSharedToken = "";
     state.temporaryMode = false;
-    els.temporaryToggle.checked = false;
     state.messages = [];
     window.location.hash = newChatUrl();
     await fetchMe();
@@ -4445,7 +4594,6 @@ const resetSignedOutState = async () => {
   state.activeChatId = null;
   state.activeSharedToken = "";
   state.temporaryMode = false;
-  els.temporaryToggle.checked = false;
   state.messages = [];
   storageRemove("token");
   updateAccount();
@@ -4776,14 +4924,6 @@ els.autoWebToggle.addEventListener("change", () => {
   updateSettingsSummary();
 });
 
-els.temporaryToggle.addEventListener("change", () => {
-  if (els.temporaryToggle.checked) {
-    startTemporaryChat();
-  } else {
-    startNewChat();
-  }
-});
-
 els.deepResearchToggle.addEventListener("change", () => {
   if (els.deepResearchToggle.checked && !state.user) {
     els.deepResearchToggle.checked = false;
@@ -4797,6 +4937,18 @@ els.deepResearchToggle.addEventListener("change", () => {
     storageSet("research", "1");
   }
   storageSet("deep_research", els.deepResearchToggle.checked ? "1" : "0");
+  updateSettingsSummary();
+});
+
+els.agenticToggle.addEventListener("change", () => {
+  if (els.agenticToggle.checked && !state.user) {
+    els.agenticToggle.checked = false;
+    storageSet("agentic_chat", "0");
+    showToast("Sign in to use Gatita Agent.");
+    updateSettingsSummary();
+    return;
+  }
+  storageSet("agentic_chat", els.agenticToggle.checked ? "1" : "0");
   updateSettingsSummary();
 });
 

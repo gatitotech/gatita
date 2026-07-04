@@ -3106,40 +3106,63 @@ body.sidebar-collapsed .chat-sidebar {
 
 .activity-panel {
   width: min(560px, 100%);
-  padding: 10px 12px;
-  border: 1px solid rgba(255, 102, 0, 0.22);
-  border-radius: var(--radius);
-  color: var(--text-soft);
-  background:
-    linear-gradient(135deg, rgba(255, 102, 0, 0.36), rgba(143, 174, 154, 0.08)),
-    rgba(255, 255, 255, 0.045);
-  box-shadow: 0 10px 34px rgba(16, 8, 3, 0.18);
-  animation: panelRise var(--duration-slow) var(--ease-emphasized) both;
+  color: inherit;
+  background: transparent;
+  box-shadow: none;
+  animation: none;
 }
 
-.activity-panel section + section {
-  margin-top: 9px;
-  padding-top: 9px;
-  border-top: 1px solid var(--line);
+.activity-inline-panel {
+  display: grid;
+  gap: 4px;
 }
 
-.activity-title {
-  display: block;
-  margin-bottom: 5px;
-  color: var(--accent-2);
-  font-size: 0.72rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.activity-panel p {
+.activity-inline {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
   margin: 0;
-  font-size: 0.8rem;
-  line-height: 1.45;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: inherit;
 }
 
-.activity-panel p + p {
-  margin-top: 3px;
+.activity-inline-label {
+  color: inherit;
+  opacity: 0.72;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.activity-inline-summary {
+  color: inherit;
+  font-size: 0.9rem;
+  font-weight: 400;
+}
+
+.activity-inline-thinking,
+.activity-inline-research {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  animation: none;
+}
+
+.activity-inline-thinking .activity-inline-label,
+.activity-inline-research .activity-inline-label,
+.activity-inline-thinking .activity-inline-summary,
+.activity-inline-research .activity-inline-summary {
+  color: inherit;
+  background: none;
+  -webkit-background-clip: initial;
+  background-clip: initial;
+  animation: none;
 }
 
 .activity-sites {
@@ -3147,6 +3170,111 @@ body.sidebar-collapsed .chat-sidebar {
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 7px;
+}
+
+.activity-sites-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  margin-left: 0;
+  padding-left: 0;
+  border-left: 0;
+  flex-wrap: wrap;
+}
+
+.activity-sites-inline a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: min(160px, 100%);
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  color: var(--text-soft);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.activity-sites-inline a:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 102, 0, 0.3);
+  transform: translateY(-1px);
+}
+
+.activity-sites-inline img {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.activity-sites-inline span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Source favicons inline - ChatGPT style */
+.activity-sites-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.activity-sites-inline a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: min(160px, 100%);
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  color: var(--text-soft);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.activity-sites-inline a:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 102, 0, 0.3);
+  transform: translateY(-1px);
+}
+
+.activity-sites-inline img {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.activity-sites-inline span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Activity text sweep animation for the summary text */
+@keyframes activityTextSweep {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 .activity-sites a {
@@ -3434,6 +3562,15 @@ body.sidebar-collapsed .chat-sidebar {
   width: 15px;
   height: 15px;
   animation: hourglassBackSpin 0.9s var(--ease-settle) infinite;
+}
+
+@keyframes activityTextSweep {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
 }
 
 .verify-row {
