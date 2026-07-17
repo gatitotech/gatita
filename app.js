@@ -107,6 +107,22 @@ const storageRemove = (key) => {
   localStorage.removeItem(`${STORAGE_PREFIX}${key}`);
   localStorage.removeItem(`${LEGACY_STORAGE_PREFIX}${key}`);
 };
+const getQueryParam = (key) => {
+  try {
+    return new URLSearchParams(window.location.search).get(key) || "";
+  } catch (_) {
+    return "";
+  }
+};
+const getPostLoginRedirect = () => {
+  const redirect = getQueryParam("redirect").trim();
+  if (!redirect) return "";
+  if (/^https?:\/\//i.test(redirect)) return "";
+  return redirect.startsWith("/") ? redirect : `/${redirect}`;
+};
+const isLoginEntryPage = () => {
+  return /\/login\.html$/i.test(window.location.pathname) || getQueryParam("login") === "1";
+};
 const getTosUrl = () => state.config?.tosUrl || "https://gatita.tech/legal";
 const chatUrl = (chatId) => `#/chat/${chatId}`;
 const sharedUrl = (token) => `#/share/${token}`;
@@ -907,6 +923,7 @@ const apiFetch = async (path, options = {}) => {
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers,
+    credentials: "include",
   });
 
   const json = await response.json().catch(() => ({}));
@@ -961,6 +978,7 @@ const streamApi = async (path, payload, onEvent, options = {}) => {
     headers: createApiHeaders({ Accept: "text/event-stream" }),
     body: JSON.stringify(payload),
     signal: options.signal,
+    credentials: "include",
   });
 
   if (!response.ok) {
@@ -4574,6 +4592,11 @@ const submitAuth = async () => {
     state.activeSharedToken = "";
     state.temporaryMode = false;
     state.messages = [];
+    const postLoginRedirect = getPostLoginRedirect();
+    if (postLoginRedirect) {
+      window.location.assign(postLoginRedirect);
+      return;
+    }
     window.location.hash = newChatUrl();
     await fetchMe();
     await fetchChats();
@@ -5446,6 +5469,15 @@ const initializeApp = async () => {
   updateNotificationUi();
   await fetchConfig();
   await fetchMe();
+  if (isLoginEntryPage() && !state.authToken) {
+    openAuthModal();
+  } else if (isLoginEntryPage() && state.authToken) {
+    const postLoginRedirect = getPostLoginRedirect();
+    if (postLoginRedirect) {
+      window.location.replace(postLoginRedirect);
+      return;
+    }
+  }
   await fetchChats();
   await routeFromHash();
   showCookieBannerIfNeeded();

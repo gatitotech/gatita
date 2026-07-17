@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
+    <title>Gatita API Docs</title>
+    <meta name="description" content="Gatita API reference and examples." />
+    <meta name="theme-color" content="#050505" />
+    <link rel="canonical" href="https://gatita.tech/api-docs.html" />
+    <link rel="icon" href="assets/avatar.webp" type="image/webp" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="api-docs.css" />
+  </head>
+  <body>
+    <div class="smoke-layer" aria-hidden="true"></div>
+    <main class="docs-shell">
+      <aside class="docs-sidebar">
+        <a class="docs-brand" href="index.html">
+          <img src="assets/avatar.webp" alt="" width="36" height="36" />
+          <div>
+            <strong>Gatita API</strong>
+            <span>Documentation</span>
+          </div>
+        </a>
+
+        <nav class="docs-nav">
+          <a href="#quickstart">Quick start</a>
+          <a href="#auth">Authentication</a>
+          <a href="#chat">Chat completions</a>
+          <a href="#errors">Errors</a>
+          <a href="api.html">API dashboard</a>
+        </nav>
+      </aside>
+
+      <section class="docs-main">
+        <header class="docs-hero">
+          <span class="eyebrow">API reference</span>
+          <h1>Build against the Gatita API</h1>
+          <p>
+            A compact reference for authentication, request shape, and the
+            public chat completions endpoint.
+          </p>
+        </header>
+
+        <section class="docs-card" id="quickstart">
+          <h2>Quick start</h2>
+          <ol>
+            <li>Create an API key in the dashboard.</li>
+            <li>Send `Authorization: Bearer gsk_...` with JSON requests.</li>
+            <li>POST to `/ask-api/chat/completions` with `model` and `messages`.</li>
+          </ol>
+        </section>
+
+        <section class="docs-grid">
+          <article class="docs-card" id="auth">
+            <h2>Authentication</h2>
+            <p>API requests use bearer keys. Browser-only pages still require session auth.</p>
+            <div class="code-block"><code>Authorization: Bearer gsk_your_key_here</code></div>
+          </article>
+
+          <article class="docs-card" id="chat">
+            <h2>Chat completions</h2>
+            <p><strong>POST</strong> <code>/ask-api/chat/completions</code></p>
+            <div class="code-block">
+<pre><code>{
+  "model": "gatita-6.0",
+  "messages": [
+    { "role": "user", "content": "ping" }
+  ],
+  "temperature": 0.7,
+  "max_tokens": 64,
+  "stream": false
+}</code></pre>
+            </div>
+          </article>
+        </section>
+
+        <section class="docs-card" id="errors">
+          <h2>Errors</h2>
+          <ul>
+            <li><code>401</code> Missing or invalid API key.</li>
+            <li><code>403</code> Account banned, active strikes, or model restrictions.</li>
+            <li><code>429</code> Rate limit exceeded.</li>
+          </ul>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

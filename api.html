@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+    <title data-i18n="api.title">Gatita API Dashboard</title>
+    <meta name="description" content="Gatita Ask API Dashboard - Manage API keys, view analytics, and upgrade your plan">
+    <meta name="theme-color" content="#050505">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Gatita API">
+    <meta name="format-detection" content="telephone=no">
+    <link rel="canonical" href="https://gatita.tech/api/">
+    <link rel="icon" href="assets/avatar.webp" type="image/webp">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <link rel="stylesheet" href="api.css">
+    <script src="i18n.js"></script>
+</head>
+<body>
+    <div class="smoke-layer" aria-hidden="true"></div>
+
+    <main class="api-app" role="main">
+        <!-- Sidebar Navigation -->
+        <aside class="api-sidebar" aria-label="API Navigation">
+            <div class="api-side-head">
+                <a class="api-brand" href="https://gatita.tech/" aria-label="Gatita Ask home">
+                    <img src="assets/avatar.webp" alt="" width="36" height="36">
+                    <span data-i18n="api.title">Gatita API</span>
+                </a>
+                <a class="api-brand-link" href="index.html" aria-label="Open Gatita Ask">
+                    <i data-lucide="arrow-left"></i>
+                    <span>Ask</span>
+                </a>
+            </div>
+
+            <nav class="api-nav" aria-label="Main navigation">
+                <div class="api-nav-section">
+                    <h3 class="api-nav-title" data-i18n="api.nav.dashboard">Dashboard</h3>
+                    <a href="#overview" class="api-nav-item active" data-tab="overview" data-i18n="api.nav.overview">
+                        <i data-lucide="layout-dashboard"></i>
+                        <span data-i18n="api.nav.overview">Overview</span>
+                    </a>
+                    <a href="#keys" class="api-nav-item" data-tab="keys" data-i18n="api.nav.keys">
+                        <i data-lucide="key"></i>
+                        <span data-i18n="api.nav.keys">API Keys</span>
+                    </a>
+                    <a href="#analytics" class="api-nav-item" data-tab="analytics" data-i18n="api.nav.analytics">
+                        <i data-lucide="bar-chart-3"></i>
+                        <span data-i18n="api.nav.analytics">Analytics</span>
+                    </a>
+                </div>
+                <div class="api-nav-section">
+                    <h3 class="api-nav-title" data-i18n="api.nav.account">Account</h3>
+                    <a href="#plan" class="api-nav-item" data-tab="plan" data-i18n="api.nav.plan">
+                        <i data-lucide="crown"></i>
+                        <span data-i18n="api.nav.plan">Plan & Upgrade</span>
+                    </a>
+                    <a href="#usage" class="api-nav-item" data-tab="usage" data-i18n="api.nav.usage">
+                        <i data-lucide="activity"></i>
+                        <span data-i18n="api.nav.usage">Usage & Limits</span>
+                    </a>
+                    <a href="#strikes" class="api-nav-item" data-tab="strikes" data-i18n="api.nav.strikes">
+                        <i data-lucide="alert-triangle"></i>
+                        <span data-i18n="api.nav.strikes">Strikes & Status</span>
+                    </a>
+                </div>
+                <div class="api-nav-section">
+                    <h3 class="api-nav-title" data-i18n="api.nav.docs">Documentation</h3>
+                    <a href="api-docs.html" class="api-nav-item external" data-i18n="api.nav.docs">
+                        <i data-lucide="book-open"></i>
+                        <span data-i18n="api.nav.docs">API Docs</span>
+                    </a>
+                    <a href="https://discord.gg/gatita" target="_blank" class="api-nav-item external" data-i18n="api.nav.support">
+                        <i data-lucide="message-circle"></i>
+                        <span data-i18n="api.nav.support">Support</span>
+                        <i data-lucide="external-link" class="external-icon"></i>
+                    </a>
+                </div>
+            </nav>
+
+            <div class="api-account-strip" id="accountButton">
+                <div class="api-account-avatar" id="accountAvatar">G</div>
+                <div class="api-account-info">
+                    <span class="api-account-name" id="accountName" data-i18n="account.loading">Loading...</span>
+                    <span class="api-account-tier" id="accountTier"></span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <section class="api-main" aria-label="API Dashboard content">
+            <header class="api-topbar">
+                <div class="api-topbar-inner">
+                    <button class="api-sidebar-toggle" id="sidebarToggle" type="button" aria-label="Toggle navigation" aria-expanded="true">
+                        <i data-lucide="menu"></i>
+                    </button>
+                    <div class="api-topbar-brand">
+                        <span class="api-kicker">Gatita API</span>
+                        <div class="api-page-title" id="pageTitle">
+                            <h1 data-i18n="api.nav.overview">Overview</h1>
+                            <p class="api-page-subtitle" id="pageSubtitle" data-i18n="api.overview.subtitle">Your API dashboard at a glance</p>
+                        </div>
+                    </div>
+                    <div class="api-topbar-actions">
+                        <a class="api-btn api-btn-secondary" href="api-docs.html">
+                            <i data-lucide="book-open"></i>
+                            <span>Docs</span>
+                        </a>
+                        <button class="api-btn api-btn-primary" id="newKeyBtn" data-i18n="api.keys.createNew">
+                            <i data-lucide="plus"></i>
+                            <span data-i18n="api.keys.createNew">New Key</span>
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <div class="api-content" id="apiContent">
+                <section class="api-hero">
+                    <div class="api-hero-copy">
+                        <h2>The Gatita Ask API</h2>
+                        <p>
+                            Manage API keys, watch usage in real time, upgrade plans through Stripe,
+                            and jump straight into the docs when you need implementation details.
+                        </p>
+                    </div>
+                    <div class="api-hero-actions">
+                        <a class="api-hero-link" href="index.html">
+                            <i data-lucide="arrow-left"></i>
+                            <span>Back to Ask</span>
+                        </a>
+                        <button class="api-hero-link api-hero-link-accent" id="newKeyBtnHero" type="button">
+                            <i data-lucide="key-round"></i>
+                            <span>Create key</span>
+                        </button>
+                    </div>
+                </section>
+
+                <!-- Overview Tab -->
+                <div class="api-tab-panel active" id="tab-overview" role="tabpanel" aria-labelledby="overview">
+                    <div class="api-stats-grid">
+                        <article class="api-stat-card">
+                            <div class="api-stat-icon" style="--accent: var(--accent)"><i data-lucide="key"></i></div>
+                            <div class="api-stat-content">
+                                <span class="api-stat-value" id="statTotalKeys">0</span>
+                                <span class="api-stat-label" data-i18n="api.stats.totalKeys">Total API Keys</span>
+                            </div>
+                        </article>
+                        <article class="api-stat-card">
+                            <div class="api-stat-icon" style="--accent: #22c55e"><i data-lucide="activity"></i></div>
+                            <div class="api-stat-content">
+                                <span class="api-stat-value" id="statTodayRequests">0</span>
+                                <span class="api-stat-label" data-i18n="api.stats.todayRequests">Today's Requests</span>
+                            </div>
+                        </article>
+                        <article class="api-stat-card">
+                            <div class="api-stat-icon" style="--accent: #3b82f6"><i data-lucide="cpu"></i></div>
+                            <div class="api-stat-content">
+                                <span class="api-stat-value" id="statTotalTokens">0</span>
+                                <span class="api-stat-label" data-i18n="api.stats.totalTokens">Total Tokens</span>
+                            </div>
+                        </article>
+                        <article class="api-stat-card">
+                            <div class="api-stat-icon" style="--accent: #f59e0b"><i data-lucide="zap"></i></div>
+                            <div class="api-stat-content">
+                                <span class="api-stat-value" id="statAvgLatency">0ms</span>
+                                <span class="api-stat-label" data-i18n="api.stats.avgLatency">Avg Latency</span>
+                            </div>
+                        </article>
+                    </div>
+
+                    <div class="api-charts-row">
+                        <section class="api-chart-card">
+                            <header class="api-chart-header">
+                                <h2 data-i18n="api.charts.requestsOverTime">Requests Over Time</h2>
+                                <div class="api-chart-controls">
+                                    <button class="api-chart-period active" data-period="24h" data-i18n="api.charts.24h">24h</button>
+                                    <button class="api-chart-period" data-period="7d" data-i18n="api.charts.7d">7d</button>
+                                    <button class="api-chart-period" data-period="30d" data-i18n="api.charts.30d">30d</button>
+                                </div>
+                            </header>
+                            <div class="api-chart-wrapper">
+                                <canvas id="requestsChart" width="800" height="300"></canvas>
+                            </div>
+                        </section>
+
+                        <section class="api-chart-card">
+                            <header class="api-chart-header">
+                                <h2 data-i18n="api.charts.modelsUsed">Models Used</h2>
+                            </header>
+                            <div class="api-chart-wrapper">
+                                <canvas id="modelsChart" width="400" height="300"></canvas>
+                            </div>
+                        </section>
+                    </div>
+
+                    <section class="api-recent-activity">
+                        <header class="api-section-header">
+                            <h2 data-i18n="api.activity.recent">Recent Activity</h2>
+                            <a href="#analytics" class="api-view-all" data-tab="analytics" data-i18n="api.activity.viewAll">View all</a>
+                        </header>
+                        <div class="api-activity-list" id="recentActivity">
+                            <div class="api-empty-state" data-i18n="api.activity.noActivity">No recent API activity</div>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- API Keys Tab -->
+                <div class="api-tab-panel" id="tab-keys" role="tabpanel" aria-labelledby="keys">
+                    <header class="api-section-header">
+                        <h2 data-i18n="api.keys.title">API Keys</h2>
+                        <p class="api-section-desc" data-i18n="api.keys.desc">Manage your API keys. Keys are shown only once upon creation.</p>
+                    </header>
+
+                    <div class="api-keys-list" id="apiKeysList">
+                        <!-- Keys rendered here -->
+                    </div>
+
+                    <div class="api-empty-state" id="noKeysState" style="display: none;">
+                        <i data-lucide="key" class="api-empty-icon"></i>
+                        <h3 data-i18n="api.keys.noKeys">No API keys yet</h3>
+                        <p data-i18n="api.keys.noKeysDesc">Create your first API key to start using the Gatita API</p>
+                        <button class="api-btn api-btn-primary" id="createFirstKeyBtn" data-i18n="api.keys.createFirst">Create API Key</button>
+                    </div>
+                </div>
+
+                <!-- Analytics Tab -->
+                <div class="api-tab-panel" id="tab-analytics" role="tabpanel" aria-labelledby="analytics">
+                    <header class="api-section-header">
+                        <h2 data-i18n="api.analytics.title">Analytics</h2>
+                        <p class="api-section-desc" data-i18n="api.analytics.desc">Detailed usage statistics and trends</p>
+                    </header>
+
+                    <div class="api-analytics-grid">
+                        <section class="api-analytics-card">
+                            <header class="api-analytics-header">
+                                <h3 data-i18n="api.analytics.requestsByEndpoint">Requests by Endpoint</h3>
+                            </header>
+                            <div class="api-analytics-chart">
+                                <canvas id="endpointsChart" width="400" height="250"></canvas>
+                            </div>
+                        </section>
+
+                        <section class="api-analytics-card">
+                            <header class="api-analytics-header">
+                                <h3 data-i18n="api.analytics.requestsByModel">Requests by Model</h3>
+                            </header>
+                            <div class="api-analytics-chart">
+                                <canvas id="modelsDetailChart" width="400" height="250"></canvas>
+                            </div>
+                        </section>
+
+                        <section class="api-analytics-card wide">
+                            <header class="api-analytics-header">
+                                <h3 data-i18n="api.analytics.tokensOverTime">Token Usage Over Time</h3>
+                            </header>
+                            <div class="api-analytics-chart">
+                                <canvas id="tokensChart" width="800" height="250"></canvas>
+                            </div>
+                        </section>
+
+                        <section class="api-analytics-card wide">
+                            <header class="api-analytics-header">
+                                <h3 data-i18n="api.analytics.errorRate">Error Rate</h3>
+                            </header>
+                            <div class="api-analytics-chart">
+                                <canvas id="errorsChart" width="800" height="250"></canvas>
+                            </div>
+                        </section>
+                    </div>
+
+                    <section class="api-analytics-table">
+                        <header class="api-analytics-header">
+                            <h3 data-i18n="api.analytics.dailyBreakdown">Daily Breakdown</h3>
+                        </header>
+                        <div class="api-table-wrapper">
+                            <table class="api-table" id="dailyBreakdownTable">
+                                <thead>
+                                    <tr>
+                                        <th data-i18n="api.table.date">Date</th>
+                                        <th data-i18n="api.table.requests">Requests</th>
+                                        <th data-i18n="api.table.tokens">Tokens</th>
+                                        <th data-i18n="api.table.successRate">Success Rate</th>
+                                        <th data-i18n="api.table.avgLatency">Avg Latency</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dailyBreakdownBody"></tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- Plan & Upgrade Tab -->
+                <div class="api-tab-panel" id="tab-plan" role="tabpanel" aria-labelledby="plan">
+                    <header class="api-section-header">
+                        <h2 data-i18n="api.plan.title">Your Plan</h2>
+                        <p class="api-section-desc" data-i18n="api.plan.desc">Upgrade to unlock higher limits, more models, and advanced features</p>
+                    </header>
+
+                    <div class="api-plan-cards" id="planCards">
+                        <!-- Plans rendered dynamically -->
+                    </div>
+
+                    <section class="api-plan-comparison">
+                        <h3 data-i18n="api.plan.compare">Feature Comparison</h3>
+                        <div class="api-table-wrapper">
+                            <table class="api-table api-comparison-table">
+                                <thead>
+                                    <tr>
+                                        <th data-i18n="api.plan.feature">Feature</th>
+                                        <th class="plan-col free" data-tier="free"><span data-i18n="api.tiers.free">Free</span></th>
+                                        <th class="plan-col plus" data-tier="plus"><span data-i18n="api.tiers.plus">Plus</span></th>
+                                        <th class="plan-col pro" data-tier="pro"><span data-i18n="api.tiers.pro">Pro</span></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td data-i18n="api.plan.dailyRequests">Daily Requests</td>
+                                        <td class="free">200</td>
+                                        <td class="plus">2,000</td>
+                                        <td class="pro">10,000</td>
+                                    </tr>
+                                    <tr>
+                                        <td data-i18n="api.plan.requestsPerSecond">Requests/Minute</td>
+                                        <td class="free">6</td>
+                                        <td class="plus">30</td>
+                                        <td class="pro">100</td>
+                                    </tr>
+                                    <tr>
+                                        <td data-i18n="api.plan.maxTokens">Max Tokens/Request</td>
+                                        <td class="free">4,096</td>
+                                        <td class="plus">8,192</td>
+                                        <td class="pro">32,768</td>
+                                    </tr>
+                                    <tr>
+                                        <td data-i18n="api.plan.models">Available Models</td>
+                                        <td class="free">2 models</td>
+                                        <td class="plus">6 models</td>
+                                        <td class="pro">9 models</td>
+                                    </tr>
+                                    <tr>
+                                        <td data-i18n="api.plan.research">Research Mode</td>
+                                        <td class="free"><i data-lucide="x" class="icon-no"></i></td>
+                                        <td class="plus"><i data-lucide="check" class="icon-yes"></i></td>
+                                        <td class="pro"><i data-lucide="check" class="icon-yes"></i></td>
+                                    </tr>
+                                    <tr>
+                                        <td data-i18n="api.plan.deepResearch">Deep Research</td>
+                                        <td class="free"><i data-lucide="x" class="icon-no"></i></td>
+                                        <td class="plus"><i data-lucide="check" class="icon-yes"></i></td>
+                                        <td class="pro"><i data-lucide="check" class="icon-yes"></i></td>
+                                    </tr>
+                                    <tr>
+                                        <td data-i18n="api.plan.agent">Gatita Agent</td>
+                                        <td class="free"><i data-lucide="x" class="icon-no"></i></td>
+                                        <td class="plus"><i data-lucide="check" class="icon-yes"></i></td>
+                                        <td class="pro"><i data-lucide="check" class="icon-yes"></i></td>
+                                    </tr>
+                                    <tr>
+                                        <td data-i18n="api.plan.strikeBypass">Strike Bypass</td>
+                                        <td class="free"><i data-lucide="x" class="icon-no"></i></td>
+                                        <td class="plus"><i data-lucide="check" class="icon-yes"></i></td>
+                                        <td class="pro"><i data-lucide="check" class="icon-yes"></i></td>
+                                    </tr>
+                                    <tr>
+                                        <td data-i18n="api.plan.prioritySupport">Priority Support</td>
+                                        <td class="free"><i data-lucide="x" class="icon-no"></i></td>
+                                        <td class="plus"><i data-lucide="check" class="icon-yes"></i></td>
+                                        <td class="pro"><i data-lucide="check" class="icon-yes"></i></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section class="api-plan-upgrade" id="upgradeSection">
+                        <h3 data-i18n="api.plan.upgradeTitle">Upgrade Your Plan</h3>
+                        <p data-i18n="api.plan.upgradeDesc">Stripe integration coming soon. Contact support for manual upgrades.</p>
+                        <button class="api-btn api-btn-primary api-btn-large" id="contactUpgradeBtn" data-i18n="api.plan.contactSupport">
+                            <i data-lucide="message-circle"></i>
+                            <span data-i18n="api.plan.contactSupport">Contact Support</span>
+                        </button>
+                    </section>
+                </div>
+
+                <!-- Usage & Limits Tab -->
+                <div class="api-tab-panel" id="tab-usage" role="tabpanel" aria-labelledby="usage">
+                    <header class="api-section-header">
+                        <h2 data-i18n="api.usage.title">Usage & Limits</h2>
+                        <p class="api-section-desc" data-i18n="api.usage.desc">Monitor your current usage against your plan limits</p>
+                    </header>
+
+                    <div class="api-usage-cards">
+                        <section class="api-usage-card">
+                            <header class="api-usage-header">
+                                <h3 data-i18n="api.usage.dailyLimit">Daily Request Limit</h3>
+                                <span class="api-usage-period" id="dailyResetTime"></span>
+                            </header>
+                            <div class="api-progress-ring" id="dailyProgressRing">
+                                <svg width="120" height="120">
+                                    <circle class="api-progress-bg" cx="60" cy="60" r="54"></circle>
+                                    <circle class="api-progress-fill" id="dailyProgressFill" cx="60" cy="60" r="54" stroke-dasharray="339" stroke-dashoffset="339"></circle>
+                                </svg>
+                                <div class="api-progress-center">
+                                    <span class="api-progress-value" id="dailyProgressValue">0</span>
+                                    <span class="api-progress-max" id="dailyProgressMax">/ 200</span>
+                                </div>
+                            </div>
+                            <div class="api-usage-details">
+                                <span class="api-usage-used" id="dailyUsed">0 used</span>
+                                <span class="api-usage-remaining" id="dailyRemaining">200 remaining</span>
+                            </div>
+                        </section>
+
+                        <section class="api-usage-card">
+                            <header class="api-usage-header">
+                                <h3 data-i18n="api.usage.rateLimit">Rate Limit (per minute)</h3>
+                            </header>
+                            <div class="api-progress-ring" id="rateProgressRing">
+                                <svg width="120" height="120">
+                                    <circle class="api-progress-bg" cx="60" cy="60" r="54"></circle>
+                                    <circle class="api-progress-fill" id="rateProgressFill" cx="60" cy="60" r="54" stroke-dasharray="339" stroke-dashoffset="339"></circle>
+                                </svg>
+                                <div class="api-progress-center">
+                                    <span class="api-progress-value" id="rateProgressValue">0</span>
+                                    <span class="api-progress-max" id="rateProgressMax">/ 6</span>
+                                </div>
+                            </div>
+                            <div class="api-usage-details">
+                                <span class="api-usage-used" id="rateUsed">0 used this minute</span>
+                                <span class="api-usage-remaining" id="rateRemaining">6 available</span>
+                            </div>
+                        </section>
+
+                        <section class="api-usage-card">
+                            <header class="api-usage-header">
+                                <h3 data-i18n="api.usage.tokenLimit">Token Limit</h3>
+                            </header>
+                            <div class="api-progress-ring" id="tokenProgressRing">
+                                <svg width="120" height="120">
+                                    <circle class="api-progress-bg" cx="60" cy="60" r="54"></circle>
+                                    <circle class="api-progress-fill" id="tokenProgressFill" cx="60" cy="60" r="54" stroke-dasharray="339" stroke-dashoffset="339"></circle>
+                                </svg>
+                                <div class="api-progress-center">
+                                    <span class="api-progress-value" id="tokenProgressValue">0</span>
+                                    <span class="api-progress-max" id="tokenProgressMax">/ 4,096</span>
+                                </div>
+                            </div>
+                            <div class="api-usage-details">
+                                <span class="api-usage-used" id="tokenUsed">0 used today</span>
+                                <span class="api-usage-remaining" id="tokenRemaining">4,096 per request</span>
+                            </div>
+                        </section>
+                    </div>
+
+                    <section class="api-usage-models">
+                        <h3 data-i18n="api.usage.availableModels">Available Models</h3>
+                        <div class="api-models-grid" id="availableModelsGrid">
+                            <!-- Models rendered dynamically -->
+                        </div>
+                    </section>
+
+                    <section class="api-usage-limits">
+                        <h3 data-i18n="api.usage.limitDetails">Limit Details</h3>
+                        <div class="api-limits-list" id="limitsList">
+                            <!-- Limits rendered dynamically -->
+                        </div>
+                    </section>
+                </div>
+
+                <!-- Strikes & Status Tab -->
+                <div class="api-tab-panel" id="tab-strikes" role="tabpanel" aria-labelledby="strikes">
+                    <header class="api-section-header">
+                        <h2 data-i18n="api.strikes.title">Strikes & Account Status</h2>
+                        <p class="api-section-desc" data-i18n="api.strikes.desc">View your account strikes and API access status</p>
+                    </header>
+
+                    <section class="api-status-card" id="accountStatusCard">
+                        <div class="api-status-indicator" id="statusIndicator">
+                            <div class="api-status-dot" id="statusDot"></div>
+                            <span class="api-status-text" id="statusText" data-i18n="api.strikes.active">Active</span>
+                        </div>
+                        <div class="api-status-details">
+                            <div class="api-status-row">
+                                <span class="api-status-label" data-i18n="api.strikes.apiAccess">API Access</span>
+                                <span class="api-status-value" id="apiAccessStatus" data-i18n="api.strikes.enabled">Enabled</span>
+                            </div>
+                            <div class="api-status-row">
+                                <span class="api-status-label" data-i18n="api.strikes.strikeCount">Active Strikes</span>
+                                <span class="api-status-value" id="strikeCount">0</span>
+                            </div>
+                            <div class="api-status-row">
+                                <span class="api-status-label" data-i18n="api.strikes.tier">Current Tier</span>
+                                <span class="api-status-value" id="currentTierDisplay">Free</span>
+                            </div>
+                            <div class="api-status-row">
+                                <span class="api-status-label" data-i18n="api.strikes.strikeBypass">Strike Bypass</span>
+                                <span class="api-status-value" id="strikeBypassStatus" data-i18n="api.strikes.notAvailable">Not available (Free tier)</span>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="api-strikes-list">
+                        <h3 data-i18n="api.strikes.history">Strike History</h3>
+                        <div class="api-strikes-table-wrapper">
+                            <table class="api-table" id="strikesTable">
+                                <thead>
+                                    <tr>
+                                        <th data-i18n="api.table.date">Date</th>
+                                        <th data-i18n="api.table.reason">Reason</th>
+                                        <th data-i18n="api.table.severity">Severity</th>
+                                        <th data-i18n="api.table.status">Status</th>
+                                        <th data-i18n="api.table.expires">Expires</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="strikesTableBody">
+                                    <tr class="api-empty-row">
+                                        <td colspan="5" data-i18n="api.strikes.noStrikes">No strikes on record</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section class="api-strikes-info">
+                        <h3 data-i18n="api.strikes.howItWorks">How Strikes Work</h3>
+                        <ul class="api-strikes-rules">
+                            <li data-i18n="api.strikes.rule1">Strikes are issued for policy violations (spam, abuse, prohibited content)</li>
+                            <li data-i18n="api.strikes.rule2">Free tier: Active strikes block API access entirely</li>
+                            <li data-i18n="api.strikes.rule3">Plus/Pro tiers: Strikes don't block API access (bypass enabled)</li>
+                            <li data-i18n="api.strikes.rule4">Strikes expire after 30 days of good behavior</li>
+                            <li data-i18n="api.strikes.rule5">3+ active strikes may result in account suspension</li>
+                            <li data-i18n="api.strikes.rule6">Appeal strikes via Discord support</li>
+                        </ul>
+                    </section>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Create Key Modal -->
+    <div class="api-modal hidden" id="createKeyModal" role="dialog" aria-modal="true" aria-labelledby="createKeyModalTitle">
+        <div class="api-modal-backdrop" id="createKeyModalBackdrop"></div>
+        <div class="api-modal-content">
+            <header class="api-modal-header">
+                <h2 id="createKeyModalTitle" data-i18n="api.keys.createModalTitle">Create API Key</h2>
+                <button class="api-modal-close" id="createKeyModalClose" aria-label="Close modal">
+                    <i data-lucide="x"></i>
+                </button>
+            </header>
+            <form class="api-modal-form" id="createKeyForm">
+                <div class="api-form-group">
+                    <label for="keyName" data-i18n="api.keys.nameLabel">Key Name</label>
+                    <input type="text" id="keyName" name="name" required maxlength="100" placeholder="e.g. Production Server" data-i18n-placeholder="api.keys.namePlaceholder">
+                    <p class="api-form-hint" data-i18n="api.keys.nameHint">A descriptive name to identify this key</p>
+                </div>
+                <div class="api-form-group">
+                    <label for="keyExpiry" data-i18n="api.keys.expiryLabel">Expires In (optional)</label>
+                    <select id="keyExpiry" name="expiresInDays">
+                        <option value="0" data-i18n="api.keys.never">Never</option>
+                        <option value="30" data-i18n="api.keys.30days">30 days</option>
+                        <option value="90" data-i18n="api.keys.90days">90 days</option>
+                        <option value="180" data-i18n="api.keys.180days">180 days</option>
+                        <option value="365" data-i18n="api.keys.365days">1 year</option>
+                    </select>
+                </div>
+                <div class="api-modal-actions">
+                    <button type="button" class="api-btn api-btn-secondary" id="createKeyCancel" data-i18n="common.cancel">Cancel</button>
+                    <button type="submit" class="api-btn api-btn-primary" data-i18n="api.keys.create">Create Key</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Show Key Modal (one-time display) -->
+    <div class="api-modal hidden" id="showKeyModal" role="dialog" aria-modal="true" aria-labelledby="showKeyModalTitle">
+        <div class="api-modal-backdrop" id="showKeyModalBackdrop"></div>
+        <div class="api-modal-content api-modal-wide">
+            <header class="api-modal-header">
+                <h2 id="showKeyModalTitle" data-i18n="api.keys.createdTitle">API Key Created</h2>
+            </header>
+            <div class="api-modal-body">
+                <div class="api-key-display">
+                    <p data-i18n="api.keys.saveNow">Save this key now. It won't be shown again.</p>
+                    <div class="api-key-box">
+                        <code id="newApiKey" class="api-key-code"></code>
+                        <button class="api-btn api-btn-ghost api-copy-btn" id="copyKeyBtn" data-i18n="api.keys.copy">
+                            <i data-lucide="copy"></i>
+                            <span data-i18n="api.keys.copy">Copy</span>
+                        </button>
+                    </div>
+                    <p class="api-key-warning" data-i18n="api.keys.warning">This is the only time you'll see the full key. Store it securely.</p>
+                </div>
+                <div class="api-key-next-steps">
+                    <h3 data-i18n="api.keys.nextSteps">Next Steps</h3>
+                    <ol>
+                        <li data-i18n="api.keys.step1">Add the key to your Authorization header: <code>Authorization: Bearer gsk_...</code></li>
+                        <li data-i18n="api.keys.step2">Check the <a href="#analytics" data-tab="analytics">Analytics</a> tab to monitor usage</li>
+                        <li data-i18n="api.keys.step3">Review <a href="https://docs.gatita.tech/api" target="_blank">API documentation</a> for endpoints</li>
+                    </ol>
+                </div>
+            </div>
+            <footer class="api-modal-footer">
+                <button class="api-btn api-btn-primary" id="showKeyDone" data-i18n="api.keys.done">Done</button>
+            </footer>
+        </div>
+    </div>
+
+    <!-- Revoke Key Modal -->
+    <div class="api-modal hidden" id="revokeKeyModal" role="dialog" aria-modal="true" aria-labelledby="revokeKeyModalTitle">
+        <div class="api-modal-backdrop" id="revokeKeyModalBackdrop"></div>
+        <div class="api-modal-content api-modal-confirm">
+            <header class="api-modal-header">
+                <h2 id="revokeKeyModalTitle" data-i18n="api.keys.revokeTitle">Revoke API Key</h2>
+            </header>
+            <div class="api-modal-body">
+                <p data-i18n="api.keys.revokeConfirm">Are you sure you want to revoke this API key? This action cannot be undone.</p>
+                <p class="api-key-name" id="revokeKeyName"></p>
+            </div>
+            <footer class="api-modal-footer">
+                <button type="button" class="api-btn api-btn-secondary" id="revokeKeyCancel" data-i18n="common.cancel">Cancel</button>
+                <button type="button" class="api-btn api-btn-danger" id="revokeKeyConfirm" data-i18n="api.keys.revoke">Revoke</button>
+            </footer>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="api-toast-container" id="toastContainer" aria-live="polite" aria-atomic="true"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="api.js"></script>
+</body>
+</html>
