@@ -25,10 +25,21 @@
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css"
     />
-    <link rel="stylesheet" href="styles.css" />
-      <script src="i18n.js"></script>
+    <link rel="stylesheet" href="styles.css?v=20260817c" />
+      <script src="i18n.js?v=20260817c"></script>
   </head>
   <body>
+    <div class="preloader" id="preloader" aria-hidden="true">
+      <div class="preloader-core">
+        <div class="preloader-logo">
+          <img src="assets/avatar.webp" alt="" width="96" height="96" />
+          <span class="preloader-ring" aria-hidden="true"></span>
+          <span class="preloader-pulse" aria-hidden="true"></span>
+        </div>
+        <span class="preloader-word">Gatita Ask</span>
+      </div>
+    </div>
+
     <div class="smoke-layer" aria-hidden="true"></div>
 
     <main class="ask-app">
@@ -226,16 +237,6 @@
             >
               <i data-lucide="phone-call"></i>
             </button>
-            <button
-              class="settings-button notebook-open-btn"
-              id="notebookToggleButton"
-              type="button"
-              aria-expanded="false"
-              aria-controls="notebookPanel"
-            >
-              <i data-lucide="notebook-tabs"></i>
-              <span data-i18n="chat.notes">Notes</span>
-            </button>
           </div>
         </header>
 
@@ -303,80 +304,13 @@
         </section>
       </section>
 
-      <aside
-        class="notebook-panel hidden"
-        id="notebookPanel"
-        aria-label="Chat notes"
-      >
-        <div class="notebook-head">
-          <div>
-            <span class="mode-label" data-i18n="notebook.workspace">Workspace</span>
-            <strong id="notebookPanelTitle" data-i18n="notebook.chatNotes">Chat Notes</strong>
-          </div>
-          <button
-            class="icon-btn"
-            id="closeNotebookButton"
-            type="button"
-            aria-label="Close notebooks"
-          >
-            <i data-lucide="x"></i>
-          </button>
-        </div>
-
-        <div class="notebook-toolbar">
-          <button class="small-btn" id="newNotebookFileButton" type="button">
-            <i data-lucide="file-plus-2"></i>
-            <span>New note</span>
-          </button>
-          <button class="small-btn" id="copyNotebookButton" type="button">
-            <i data-lucide="copy"></i>
-            <span>Copy</span>
-          </button>
-          <button class="small-btn" id="editNotebookButton" type="button">
-            <i data-lucide="pencil"></i>
-            <span>Edit</span>
-          </button>
-          <button class="small-btn" id="saveNotebookButton" type="button">
-            <i data-lucide="save"></i>
-            <span>Save</span>
-          </button>
-          <span class="notebook-scope" id="notebookScopeText"
-            >Saved to this chat</span
-          >
-        </div>
-
-        <div class="notebook-body">
-          <nav
-            class="notebook-files"
-            id="notebookFileList"
-            aria-label="Chat notes"
-          ></nav>
-
-          <section class="notebook-workspace">
-            <div
-              class="notebook-change-tabs hidden"
-              id="notebookChangeTabs"
-              role="tablist"
-              aria-label="AI notebook changes"
-            ></div>
-            <div
-              class="notebook-ai-diff hidden"
-              id="notebookAiDiff"
-              role="region"
-              aria-label="Notebook diff"
-            ></div>
-            <div class="notebook-meta" id="notebookMeta">No file selected</div>
-            <textarea
-              class="notebook-editor"
-              id="notebookEditor"
-              spellcheck="true"
-              placeholder="Chat notes and AI-created notes appear here."
-            ></textarea>
-            <div class="notebook-preview hidden" id="notebookPreview"></div>
-          </section>
-        </div>
-      </aside>
     </main>
+
+    <div
+      class="sidebar-scrim hidden"
+      id="sidebarScrim"
+      aria-hidden="true"
+    ></div>
 
     <div
       class="modal-backdrop hidden"
@@ -932,6 +866,24 @@
       src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"
       defer
     ></script>
-    <script src="app.js" defer></script>
+    <script src="app.js?v=20260817c" defer></script>
+    <script>
+      (function () {
+        var preloader = document.getElementById("preloader");
+        if (!preloader) return;
+        var hide = function () {
+          document.body.classList.add("app-ready");
+          preloader.classList.add("preloader-done");
+        };
+        var t0 = performance.now();
+        var onLoad = function () {
+          var wait = Math.max(0, 750 - (performance.now() - t0));
+          window.setTimeout(hide, wait);
+        };
+        if (document.readyState === "complete") onLoad();
+        else window.addEventListener("load", onLoad);
+        window.setTimeout(hide, 3500);
+      })();
+    </script>
   </body>
 </html>

@@ -172,6 +172,8 @@
     // Initialize
     async function init() {
         setupEventListeners();
+        syncMobileSidebar();
+        window.addEventListener('resize', syncMobileSidebar);
         await checkAuth();
         if (currentUser) {
             await loadDashboardData();
@@ -185,6 +187,13 @@
     function setupEventListeners() {
         // Sidebar toggle
         elements.sidebarToggle?.addEventListener('click', toggleSidebar);
+
+        // Tap the mobile backdrop to close the sidebar
+        document.querySelector('.api-main')?.addEventListener('click', (e) => {
+            if (window.innerWidth < 860 && e.target === e.currentTarget) {
+                closeSidebar();
+            }
+        });
 
         // Navigation
         elements.navItems.forEach(item => {
@@ -964,8 +973,15 @@
         const expanded = !document.body.classList.contains('sidebar-collapsed');
         elements.sidebarToggle.setAttribute('aria-expanded', expanded);
     }
-
     function closeSidebar() {
+        if (window.innerWidth < 860) {
+            document.body.classList.add('sidebar-collapsed');
+            elements.sidebarToggle.setAttribute('aria-expanded', 'false');
+        }
+    }
+
+    // Keep the off-canvas sidebar hidden by default on small screens
+    function syncMobileSidebar() {
         if (window.innerWidth < 860) {
             document.body.classList.add('sidebar-collapsed');
             elements.sidebarToggle.setAttribute('aria-expanded', 'false');

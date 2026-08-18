@@ -11,9 +11,19 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=20260817c">
 </head>
 <body class="legal-page">
+    <div class="preloader" id="preloader" aria-hidden="true">
+        <div class="preloader-core">
+            <div class="preloader-logo">
+                <img src="assets/avatar.webp" alt="" width="96" height="96">
+                <span class="preloader-ring" aria-hidden="true"></span>
+                <span class="preloader-pulse" aria-hidden="true"></span>
+            </div>
+            <span class="preloader-word">Gatita</span>
+        </div>
+    </div>
     <main class="legal-shell">
         <nav class="legal-nav" aria-label="Legal navigation">
             <a class="brand" href="index.html" aria-label="Back to Gatita Ask">
@@ -144,5 +154,23 @@
             <p>This page is intended to describe Gatita Ask accurately and transparently. It should be reviewed by qualified counsel before production use where formal legal compliance is required.</p>
         </section>
     </main>
+    <script>
+      (function () {
+        var preloader = document.getElementById("preloader");
+        if (!preloader) return;
+        var hide = function () {
+          document.body.classList.add("app-ready");
+          preloader.classList.add("preloader-done");
+        };
+        var t0 = performance.now();
+        var onLoad = function () {
+          var wait = Math.max(0, 750 - (performance.now() - t0));
+          window.setTimeout(hide, wait);
+        };
+        if (document.readyState === "complete") onLoad();
+        else window.addEventListener("load", onLoad);
+        window.setTimeout(hide, 3500);
+      })();
+    </script>
 </body>
 </html>
