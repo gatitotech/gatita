@@ -23,7 +23,8 @@ const API_BASE =
   API_BASE_OVERRIDE ||
   "https://api.clankr.tech/ask-api";
 const LEGAL_VERSION = "2026-05-23";
-const STREAM_RENDER_INTERVAL_MS = 40;
+const STREAM_RENDER_INTERVAL_MS = 80;
+const STREAM_MARKDOWN_INTERVAL_MS = 120;
 const NOTIFICATION_PROMPT_INTERVAL_MS = 30 * 60 * 1000;
 const BROWSER_CHECK_YIELD_EVERY = 150;
 const COMPACT_SHELL_QUERY = "(max-width: 980px)";
@@ -49,6 +50,8 @@ const PROMPT_TEMPLATES = {
     "Make a concise research brief with current context, important facts, and open questions. Topic: ",
   "research-compare":
     "Compare two sides of this topic fairly, list what evidence would settle the disagreement, and suggest reliable sources to check: ",
+  "run-code":
+    "Run this Python code in your secure sandbox and show me the output:\n\n```python\nprint(\"Hello from the sandbox!\")\n```",
 };
 
 const storageGet = (key) =>
@@ -112,6 +115,8 @@ const els = {
   settingsButton: document.getElementById("settingsButton"),
   settingsWrap: document.querySelector(".settings-wrap"),
   settingsMenu: document.getElementById("settingsMenu"),
+  settingsMenuCloseButton: document.getElementById("settingsMenuCloseButton"),
+  settingsAccountButton: document.getElementById("settingsAccountButton"),
   settingsModelName: document.getElementById("settingsModelName"),
   settingsSummary: document.getElementById("settingsSummary"),
   sidebarToggleButton: document.getElementById("sidebarToggleButton"),
@@ -563,37 +568,20 @@ const isNearMessageBottom = (threshold = 160) => {
   return distanceFromBottom < threshold;
 };
 
-const scrollMessagesToBottomNow = ({ smooth = false } = {}) => {
+const scrollMessagesToBottomNow = () => {
   if (!els.messageScroll) return;
-  const top = Math.max(
+  els.messageScroll.scrollTop = Math.max(
     0,
     els.messageScroll.scrollHeight - els.messageScroll.clientHeight,
   );
-  const canSmooth =
-    smooth &&
-    !state.busy &&
-    !prefersReducedMotion() &&
-    typeof els.messageScroll.scrollTo === "function";
-  if (canSmooth) {
-    els.messageScroll.scrollTo({ top, behavior: "smooth" });
-    return;
-  }
-  els.messageScroll.scrollTop = top;
 };
 
-const queueBottomLock = ({ smooth = false } = {}) => {
+const queueBottomLock = () => {
   if (queueBottomLock.frame) cancelAnimationFrame(queueBottomLock.frame);
-  if (queueBottomLock.secondFrame)
-    cancelAnimationFrame(queueBottomLock.secondFrame);
-
-  scrollMessagesToBottomNow({ smooth });
+  scrollMessagesToBottomNow();
   queueBottomLock.frame = requestAnimationFrame(() => {
-    scrollMessagesToBottomNow({ smooth });
-    queueBottomLock.secondFrame = requestAnimationFrame(() => {
-      scrollMessagesToBottomNow({ smooth });
-      queueBottomLock.frame = null;
-      queueBottomLock.secondFrame = null;
-    });
+    scrollMessagesToBottomNow();
+    queueBottomLock.frame = null;
   });
 };
 
@@ -607,13 +595,116 @@ const getMessageElement = (message) => {
   return message._messageEl;
 };
 
+/* ---------- Word-by-word reveal ----------
+   Every message reveals word by word: each word pops up from below with a
+   spring, a blur that resolves, and a fade. Streaming messages only animate
+   the words that are new since the last paint, so nothing re-plays. */
+const WORD_SKIP_TAGS = new Set([
+  "PRE",
+  "CODE",
+  "SCRIPT",
+  "STYLE",
+  "TEXTAREA",
+  "SVG",
+  "BUTTON",
+  "INPUT",
+  "SELECT",
+]);
+
+const makeWordSpan = (token, animate, order, delay = 0) => {
+  const span = document.createElement("span");
+  span.className = animate ? "word word-in" : "word";
+  if (animate) span.style.setProperty("--delay", `${Math.max(0, delay)}ms`);
+  span.textContent = token;
+  return span;
+};
+
+const wrapWordsInElement = (
+  root,
+  animateFrom = Infinity,
+  getAnimationDelay = (order) => order * 24,
+) => {
+  if (!root) return 0;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (!node.nodeValue || !node.nodeValue.trim())
+        return NodeFilter.FILTER_REJECT;
+      // Leave math untouched so MathJax can still find its delimiters.
+      if (/(\$\$|\\\(|\\\[|\$[^$\n]{1,160}\$)/.test(node.nodeValue))
+        return NodeFilter.FILTER_REJECT;
+      let parent = node.parentElement;
+      while (parent && parent !== root) {
+        if (WORD_SKIP_TAGS.has(parent.tagName))
+          return NodeFilter.FILTER_REJECT;
+        parent = parent.parentElement;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  const textNodes = [];
+  while (walker.nextNode()) textNodes.push(walker.currentNode);
+
+  let tokenIndex = 0;
+  textNodes.forEach((node) => {
+    const tokens = String(node.nodeValue).split(/(\s+)/);
+    const frag = document.createDocumentFragment();
+    tokens.forEach((token) => {
+      if (!token) return;
+      const index = tokenIndex;
+      tokenIndex += 1;
+      if (/^\s+$/.test(token)) {
+        frag.appendChild(document.createTextNode(token));
+        return;
+      }
+      const animate = index >= animateFrom;
+      frag.appendChild(
+        makeWordSpan(
+          token,
+          animate,
+          index - animateFrom,
+          animate ? getAnimationDelay(index - animateFrom) : 0,
+        ),
+      );
+    });
+    node.parentNode.replaceChild(frag, node);
+  });
+  return tokenIndex;
+};
+
 const updateStreamingMessageContent = (message) => {
   const messageElement = getMessageElement(message);
-  const streamBody = messageElement?.querySelector(".stream-plain");
+  const streamBody = messageElement?.querySelector(".stream-markdown");
   if (!streamBody) return false;
 
-  streamBody.textContent = getVisibleMessageContent(message);
-  if (state.busy || isNearMessageBottom()) queueBottomLock();
+  const text = getVisibleMessageContent(message);
+  const now = performance.now();
+  const shouldRefresh =
+    message._streamMarkdownSource !== text &&
+    now - (message._streamMarkdownAt || 0) >= STREAM_MARKDOWN_INTERVAL_MS;
+  const shouldStickToBottom = isNearMessageBottom();
+
+  if (shouldRefresh || !message._streamMarkdownSource) {
+    const previousTokenCount = message._streamTokenCount || 0;
+    streamBody.innerHTML = renderMarkdown(text);
+    let nextRevealAt = Math.max(now, message._streamRevealAvailableAt || now);
+    const tokenCount = wrapWordsInElement(
+      streamBody,
+      previousTokenCount,
+      () => {
+        const delay = Math.max(0, nextRevealAt - now);
+        nextRevealAt += 72;
+        return delay;
+      },
+    );
+    message._streamTokenCount = tokenCount;
+    message._streamRevealAvailableAt = nextRevealAt;
+    message._streamMarkdownSource = text;
+    message._streamMarkdownAt = now;
+    message._streamMarkdownHtml = streamBody.innerHTML;
+  } else if (streamBody.innerHTML !== message._streamMarkdownHtml) {
+    streamBody.innerHTML = message._streamMarkdownHtml || "";
+  }
+  if (shouldStickToBottom) queueBottomLock();
   return true;
 };
 
@@ -702,14 +793,11 @@ const queueMathTypeset = () => {
       ),
   );
   if (!hasMath) return;
-  const shouldStickToBottom = isNearMessageBottom(220);
   clearTimeout(queueMathTypeset.timer);
   queueMathTypeset.timer = setTimeout(async () => {
     await loadMathJax();
     window.MathJax.typesetPromise([els.messages])
-      .then(() => {
-        if (shouldStickToBottom) queueBottomLock({ smooth: true });
-      })
+      .then(() => {})
       .catch(() => {});
   }, 160);
 };
@@ -1141,7 +1229,10 @@ const renderSelects = () => {
   const savedAgenticChat = storageGet("agentic_chat") === "1";
 
   els.modelSelect.innerHTML = models
-    .map((model) => `<option value="${model.id}">${model.name}</option>`)
+    .map((model) => {
+      const toolLabel = model.nativeTools ? " · Native tools" : "";
+      return `<option value="${escapeHtml(model.id)}">${escapeHtml(model.name)}${toolLabel}</option>`;
+    })
     .join("");
   els.personalitySelect.innerHTML = personalities
     .map(
@@ -1163,16 +1254,41 @@ const renderSelects = () => {
   els.autoWebToggle.checked = savedAutoWeb && Boolean(state.user);
   els.deepResearchToggle.checked = savedDeepResearch && Boolean(state.user);
   els.agenticToggle.checked = savedAgenticChat && Boolean(state.user);
+  updateNativeToolControls();
   renderCustomSelect("model");
   renderCustomSelect("personality");
   updateSettingsSummary();
+};
+
+const updateNativeToolControls = () => {
+  const selectedModel = (state.config?.models || []).find(
+    (model) => model.id === els.modelSelect?.value,
+  );
+  const available = Boolean(state.user && selectedModel?.nativeTools);
+  document.querySelectorAll(".research-control").forEach((control) => {
+    control.classList.toggle("disabled", !available);
+    control.title = available
+      ? "Native web and sandbox tools are available for this model"
+      : "Native tools require a signed-in Gatita 6.7 chat";
+    control.setAttribute("aria-disabled", available ? "false" : "true");
+    const input = control.querySelector("input");
+    if (input) {
+      input.disabled = !available;
+      if (!available) input.checked = false;
+    }
+  });
 };
 
 const updateSettingsSummary = () => {
   if (!els.settingsSummary) return;
   const modelName =
     els.modelSelect.selectedOptions?.[0]?.textContent || "Model";
+  const selectedModel = (state.config?.models || []).find(
+    (model) => model.id === els.modelSelect.value,
+  );
   const extras = [
+    selectedModel?.nativeTools ? "Native tools" : "",
+
     els.thinkingToggle.checked ? "Thinking" : "",
     els.deepResearchToggle.checked
       ? "Deep research"
@@ -1188,9 +1304,9 @@ const updateSettingsSummary = () => {
   if (els.settingsButton) {
     els.settingsButton.setAttribute(
       "aria-label",
-      `Ask controls: ${modelName}${summary ? `, ${summary}` : ""}`,
+      `Ask settings: ${modelName}${summary ? `, ${summary}` : ""}`,
     );
-    els.settingsButton.title = "Ask controls";
+    els.settingsButton.title = "Ask settings";
   }
 };
 
@@ -1432,6 +1548,7 @@ const guessPartialToolBlock = (raw) => {
   if (/"tool"\s*:\s*"research"/i.test(text)) return { tool: "research" };
   if (/"tool"\s*:\s*"think"/i.test(text)) return { tool: "think" };
   if (/"tool"\s*:\s*"summarize"/i.test(text)) return { tool: "summarize" };
+  if (/"tool"\s*:\s*"run"/i.test(text)) return { tool: "run" };
   return { tool: "think" };
 };
 
@@ -1470,6 +1587,17 @@ const describeToolActivity = (toolCall) => {
       summary: "Summarizing information",
     };
   }
+  if (tool === "run") {
+    const language =
+      String(toolCall.language || "").toLowerCase() === "shell"
+        ? "terminal"
+        : "Python";
+    return {
+      kind: "sandbox",
+      label: "Sandbox",
+      summary: `Running ${language} code in a secure sandbox…`,
+    };
+  }
   return {
     kind: "thinking",
     label: "Thinking",
@@ -1493,7 +1621,7 @@ const isSafeUrl = (value) => {
 const renderInlineMarkdown = (value) => {
   const codeSpans = [];
   let text = String(value || "").replace(/`([^`]+)`/g, (match, code) => {
-    const token = `@@CODESPAN_${codeSpans.length}@@`;
+    const token = `@@CODESPAN${codeSpans.length}@@`;
     codeSpans.push(`<code>${escapeHtml(code)}</code>`);
     return token;
   });
@@ -1521,7 +1649,7 @@ const renderInlineMarkdown = (value) => {
     .replace(/~~([^~]+)~~/g, "<del>$1</del>");
 
   codeSpans.forEach((html, index) => {
-    text = text.replace(`@@CODESPAN_${index}@@`, html);
+    text = text.replace(`@@CODESPAN${index}@@`, html);
   });
   return text;
 };
@@ -1565,7 +1693,7 @@ const renderMarkdown = (value) => {
   const protectedSource = source.replace(
     /```([^\n`]*)?\n?([\s\S]*?)```/g,
     (match, lang, code) => {
-      const token = `@@CODEBLOCK_${codeBlocks.length}@@`;
+      const token = `@@CODEBLOCK${codeBlocks.length}@@`;
       codeBlocks.push({
         lang: normalizeCodeLanguage(lang),
         code: escapeHtml(code.trim()),
@@ -1614,7 +1742,7 @@ const renderMarkdown = (value) => {
       continue;
     }
 
-    const codeToken = trimmed.match(/^@@CODEBLOCK_(\d+)@@$/);
+    const codeToken = trimmed.match(/^@@CODEBLOCK(\d+)@@$/);
     if (codeToken) {
       closeLooseBlocks();
       const block = codeBlocks[Number(codeToken[1])];
@@ -1803,7 +1931,15 @@ const renderActivityPanel = (activity) => {
   const sources = Array.isArray(activity.sources)
     ? activity.sources.slice(-6)
     : [];
-  if (thinking.length === 0 && research.length === 0 && sources.length === 0)
+  const sandbox = Array.isArray(activity.sandbox)
+    ? activity.sandbox.slice(-1)
+    : [];
+  if (
+    thinking.length === 0 &&
+    research.length === 0 &&
+    sources.length === 0 &&
+    sandbox.length === 0
+  )
     return "";
 
   const latestThinking = normalizeActivityEntry(
@@ -1814,6 +1950,10 @@ const renderActivityPanel = (activity) => {
     research[research.length - 1],
     "Researching",
   );
+  const latestSandbox = normalizeActivityEntry(
+    sandbox[sandbox.length - 1],
+    "Running code",
+  );
 
   return `
         <div class="activity-panel activity-inline-panel">
@@ -1823,6 +1963,16 @@ const renderActivityPanel = (activity) => {
                 <p class="activity-inline activity-inline-thinking" aria-live="polite">
                     <span class="activity-inline-label">Thinking</span>
                     <span class="activity-inline-summary">${escapeHtml(latestThinking.summary)}</span>
+                </p>
+            `
+                : ""
+            }
+            ${
+              latestSandbox
+                ? `
+                <p class="activity-inline activity-inline-sandbox" aria-live="polite">
+                    <span class="activity-inline-label">Sandbox</span>
+                    <span class="activity-inline-summary">${escapeHtml(latestSandbox.summary)}</span>
                 </p>
             `
                 : ""
@@ -1907,7 +2057,7 @@ const renderQueueIndicator = (message) => {
 
 const renderMessages = () => {
   const viewStreaming = isCurrentViewStreaming();
-  const shouldStickToBottom = viewStreaming || isNearMessageBottom();
+  const shouldStickToBottom = isNearMessageBottom();
   updateWelcomeText();
   updateChatBlockedOverlay();
   els.emptyState.classList.toggle("hidden", state.messages.length > 0);
@@ -1917,13 +2067,26 @@ const renderMessages = () => {
 
   els.messages.classList.toggle("streaming-render", viewStreaming);
   els.messageScroll.classList.toggle("streaming-scroll", viewStreaming);
+  const now = performance.now();
+  const seenKeys =
+    renderMessages.seenKeys || (renderMessages.seenKeys = new Set());
+  const animatingKeys =
+    renderMessages.animatingKeys || (renderMessages.animatingKeys = new Map());
+  for (const [key, until] of animatingKeys) {
+    if (until < now) animatingKeys.delete(key);
+  }
+  const lastIndex = state.messages.length - 1;
   els.messages.innerHTML = state.messages
     .map((message, index) => {
       const renderKey = getMessageRenderKey(message, index);
-      const entering = !renderMessages.seenKeys?.has(renderKey);
+      const isNew = !seenKeys.has(renderKey);
+      if (isNew) {
+        seenKeys.add(renderKey);
+        // Only animate the newest messages so loading a long chat stays calm.
+        if (index >= lastIndex - 3) animatingKeys.set(renderKey, now + 900);
+      }
+      const entering = isNew || animatingKeys.has(renderKey);
       const entryClass = entering && !viewStreaming ? " entering" : "";
-      renderMessages.seenKeys = renderMessages.seenKeys || new Set();
-      renderMessages.seenKeys.add(renderKey);
 
       if (message.type === "policy") {
         return `
@@ -1958,12 +2121,9 @@ const renderMessages = () => {
       const body =
         message.role === "assistant"
           ? message.streaming
-            ? `<div class="stream-plain">${escapeHtml(visibleContent)}</div>`
+            ? `<div class="markdown-body stream-markdown">${message._streamMarkdownHtml || ""}</div>`
             : `<div class="markdown-body">${getMarkdownHtml(message)}</div>`
           : escapeHtml(visibleContent);
-      const streaming = message.streaming
-        ? '<span class="stream-cursor" aria-hidden="true"></span>'
-        : "";
       const sources =
         message.role === "assistant" ? renderSources(message.sources) : "";
       const activity =
@@ -1995,18 +2155,37 @@ const renderMessages = () => {
 
       return `
             <article class="message ${message.role === "user" ? "user" : "assistant"}${message.streaming ? " streaming" : ""}${entryClass}" data-message-id="${message.id || ""}" data-render-key="${escapeHtml(renderKey)}">
-                <div class="message-stack">${raw}${queue}<div class="bubble">${activity}${body}${streaming}${chips}${sources}</div>${actions}</div>
+                <div class="message-stack">${raw}${queue}<div class="bubble">${activity}${body}${chips}${sources}</div>${actions}</div>
             </article>
         `;
     })
     .join("");
-  if (shouldStickToBottom) queueBottomLock({ smooth: !viewStreaming });
+  if (shouldStickToBottom) queueBottomLock();
   requestAnimationFrame(() => {
-    if (!viewStreaming) {
-      highlightCodeBlocks(els.messages);
-      queueMathTypeset();
-      iconRefresh();
+    if (viewStreaming) {
+      // Fill the streaming body word by word without re-rendering the list.
+      const streamingMessage = state.messages.find(
+        (message) => message.streaming,
+      );
+      if (streamingMessage) updateStreamingMessageContent(streamingMessage);
+      return;
     }
+    // Reveal finished messages word by word.
+    els.messages.querySelectorAll(".message.entering").forEach((article) => {
+      const renderKey = article.dataset.renderKey;
+      const message = state.messages.find(
+        (item, index) => getMessageRenderKey(item, index) === renderKey,
+      );
+      if (!message) return;
+      const target =
+        message.role === "assistant"
+          ? article.querySelector(".markdown-body")
+          : article.querySelector(".bubble");
+      if (target) wrapWordsInElement(target, 0);
+    });
+    highlightCodeBlocks(els.messages);
+    queueMathTypeset();
+    iconRefresh();
   });
 };
 
@@ -2318,6 +2497,7 @@ const fetchConfig = async () => {
   updateAccountStatus(data.accountStatus);
   renderSelects();
   renderBrowserCheck();
+  renderRandomTemplates();
 };
 
 const fetchMe = async () => {
@@ -2755,6 +2935,7 @@ const sendMessage = async (options = {}) => {
         thinking: [],
         research: [],
         sources: [],
+        sandbox: [],
       },
       streaming: true,
       loading: true,
@@ -2870,6 +3051,42 @@ const sendMessage = async (options = {}) => {
           return;
         }
 
+        if (event === "tool_status") {
+          assistantDraft.loading = false;
+          assistantDraft.queueing = false;
+          const toolName = String(data.name || "").toLowerCase();
+          const summary = String(data.summary || "Using a native tool");
+          if (toolName === "web_search") {
+            assistantDraft.activity.research.push({ message: summary, summary });
+            assistantDraft.activity.research = assistantDraft.activity.research.slice(-8);
+          }
+          if (isStreamTargetActive(streamTarget)) scheduleRenderMessages();
+          return;
+        }
+
+        if (event === "sandbox_status") {
+          assistantDraft.loading = false;
+          assistantDraft.queueing = false;
+          const langLabel = data.language === "shell" ? "terminal" : "Python";
+          const status = String(data.status || "running");
+          let summary = `Running ${langLabel} code in a secure sandbox…`;
+          if (status === "done") summary = `Finished running ${langLabel} code`;
+          else if (status === "timeout") summary = "Code timed out in the sandbox";
+          else if (status === "error") summary = "Sandbox unavailable";
+          assistantDraft.activity.sandbox = [
+            {
+              message: summary,
+              summary,
+              language: data.language,
+              status,
+              exitCode: data.exitCode,
+              durationMs: data.durationMs,
+            },
+          ];
+          if (isStreamTargetActive(streamTarget)) scheduleRenderMessages();
+          return;
+        }
+
         if (event === "research_source") {
           if (data.source) {
             assistantDraft.activity.sources = [
@@ -2935,6 +3152,7 @@ const sendMessage = async (options = {}) => {
             assistantDraft.activity.thinking = [];
             assistantDraft.activity.research = [];
             assistantDraft.activity.sources = [];
+            assistantDraft.activity.sandbox = [];
             assistantDraft.activity[toolActivity.kind] = [
               {
                 message: toolActivity.summary,
@@ -2945,6 +3163,7 @@ const sendMessage = async (options = {}) => {
             assistantDraft.activity.thinking = [];
             assistantDraft.activity.research = [];
             assistantDraft.activity.sources = [];
+            assistantDraft.activity.sandbox = [];
           }
           if (
             isStreamTargetActive(streamTarget) &&
@@ -2970,6 +3189,7 @@ const sendMessage = async (options = {}) => {
           assistantDraft.activity.thinking = [];
           assistantDraft.activity.research = [];
           assistantDraft.activity.sources = [];
+          assistantDraft.activity.sandbox = [];
           assistantDraft.content =
             getVisibleMessageContent(assistantDraft) || "Stopped.";
           return;
@@ -3006,6 +3226,7 @@ const sendMessage = async (options = {}) => {
       assistantDraft.activity.thinking = [];
       assistantDraft.activity.research = [];
       assistantDraft.activity.sources = [];
+      assistantDraft.activity.sandbox = [];
       notifyGenerationDone(streamTarget, assistantDraft);
     } else {
       assistantDraft.loading = false;
@@ -3014,6 +3235,7 @@ const sendMessage = async (options = {}) => {
       assistantDraft.activity.thinking = [];
       assistantDraft.activity.research = [];
       assistantDraft.activity.sources = [];
+      assistantDraft.activity.sandbox = [];
     }
     setMessagesForStreamTarget(streamTarget, messageList);
 
@@ -4191,7 +4413,9 @@ els.modelSelect.addEventListener("change", () => {
       () => {},
     );
   renderCustomSelect("model");
+  updateNativeToolControls();
   updateSettingsSummary();
+  renderRandomTemplates();
 });
 
 els.personalitySelect.addEventListener("change", () => {
@@ -4280,9 +4504,27 @@ els.settingsButton.addEventListener("click", (event) => {
   toggleSettingsMenu();
 });
 
+els.settingsMenuCloseButton?.addEventListener("click", () => {
+  closeSettingsMenu();
+  els.settingsButton?.focus();
+});
+
+els.settingsAccountButton?.addEventListener("click", () => {
+  closeSettingsMenu();
+  openAccountModal();
+});
+
 els.settingsMenu.addEventListener("click", (event) => {
   const target = event.target;
   if (!target.closest?.(".custom-select-shell")) closeCustomSelects();
+});
+
+document.addEventListener("pointerdown", (event) => {
+  if (!isSettingsMenuOpen()) return;
+  const target = event.target;
+  if (els.settingsMenu.contains(target)) return;
+  if (els.settingsButton.contains(target)) return;
+  closeSettingsMenu();
 });
 
 els.sidebarToggleButton.addEventListener("click", toggleSidebar);
@@ -4685,13 +4927,15 @@ const TRAY_ICONS = {
   writing: "edit-3",
   research: "search",
   "research-compare": "git-compare-arrows",
+  "run-code": "terminal",
 };
 const TRAY_LABELS = {
   coding: "Debug code",
   school: "Study guide",
   writing: "Rewrite",
   research: "Research brief",
-  "research-compare": "Compare sources"
+  "research-compare": "Compare sources",
+  "run-code": "Run code",
 };
 
 function getTrayLabel(k) {
@@ -4701,7 +4945,8 @@ function getTrayLabel(k) {
       school: "template.school",
       writing: "template.writing",
       research: "template.research",
-      "research-compare": "template.researchCompare"
+      "research-compare": "template.researchCompare",
+      "run-code": "template.runCode",
     };
     return window.i18n(keyMap[k]);
   }
@@ -4711,7 +4956,14 @@ function getTrayLabel(k) {
 function renderRandomTemplates() {
   const tray = document.getElementById("templateTray");
   if (!tray) return;
-  const keys = Object.keys(PROMPT_TEMPLATES);
+  const sandboxEnabled =
+    !state.config || state.config.sandbox?.enabled !== false;
+  const selectedModel = (state.config?.models || []).find(
+    (model) => model.id === els.modelSelect?.value,
+  );
+  const nativeToolsEnabled = Boolean(state.user && selectedModel?.nativeTools);
+  let keys = Object.keys(PROMPT_TEMPLATES);
+  if (!sandboxEnabled || !nativeToolsEnabled) keys = keys.filter((k) => k !== "run-code");
   const shuffled = keys.sort(() => 0.5 - Math.random());
   const selected = shuffled.slice(0, 3);
 

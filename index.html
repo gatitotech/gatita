@@ -25,10 +25,11 @@
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css"
     />
-    <link rel="stylesheet" href="styles.css?v=20260817c" />
-      <script src="i18n.js?v=20260817c"></script>
+    <link rel="stylesheet" href="styles.css?v=20260922a" />
+      <script src="i18n.js?v=20260922a"></script>
   </head>
   <body>
+    <a class="skip-link" href="#messageInput" data-i18n="a11y.skipToChat">Skip to chat</a>
     <div class="preloader" id="preloader" aria-hidden="true">
       <div class="preloader-core">
         <div class="preloader-logo">
@@ -54,7 +55,7 @@
             <span data-i18n="app.title">Gatita Ask</span>
           </a>
           <div class="side-actions">
-            <a class="icon-btn" href="api.html" aria-label="Open API dashboard" title="API dashboard">
+            <a class="icon-btn api-link-btn" href="api.html" aria-label="Open API dashboard" title="API dashboard" data-i18n-title="sidebar.api">
               <i data-lucide="layout-dashboard"></i>
             </a>
             <button
@@ -79,6 +80,15 @@
             </button>
           </div>
         </div>
+
+        <a class="api-cta" href="api.html" aria-label="Open the Gatita API dashboard">
+          <span class="api-cta-icon"><i data-lucide="layout-dashboard"></i></span>
+          <span class="api-cta-copy">
+            <strong data-i18n="sidebar.api">API dashboard</strong>
+            <small data-i18n="sidebar.apiHint">Keys, usage &amp; docs</small>
+          </span>
+          <i data-lucide="arrow-right" class="api-cta-arrow"></i>
+        </a>
 
         <button
           class="account-strip"
@@ -122,13 +132,14 @@
                 class="settings-button model-control"
                 id="settingsButton"
                 type="button"
-                aria-label="Ask controls"
-                title="Ask controls"
+                aria-label="Ask settings"
+                title="Ask settings"
                 aria-expanded="false"
                 aria-controls="settingsMenu"
               >
                 <i data-lucide="sliders-horizontal"></i>
                 <span class="model-control-copy">
+                  <span class="settings-eyebrow" data-i18n="settings.title">Settings</span>
                   <strong class="settings-model-name" id="settingsModelName" data-i18n="account.loading">Loading...</strong>
                   <span
                     class="settings-chip-row"
@@ -138,94 +149,159 @@
                 </span>
                 <i data-lucide="chevron-down" class="model-control-chevron"></i>
               </button>
-              <div class="settings-menu hidden" id="settingsMenu">
-                <div
-                  class="select-shell custom-select-shell"
-                  data-custom-select="model"
-                >
-                  <span data-i18n="chat.model">Model</span>
-                  <select
-                    class="native-select-hidden"
-                    id="modelSelect"
-                    aria-hidden="true"
-                    tabindex="-1"
-                  ></select>
+              <div class="settings-menu hidden" id="settingsMenu" role="dialog" aria-label="Ask settings">
+                <div class="settings-menu-head">
+                  <span class="settings-menu-title">
+                    <i data-lucide="sliders-horizontal"></i>
+                    <span data-i18n="settings.title">Settings</span>
+                  </span>
                   <button
-                    class="custom-select-button"
-                    id="modelSelectButton"
+                    class="icon-btn settings-menu-close"
+                    id="settingsMenuCloseButton"
                     type="button"
-                    aria-haspopup="listbox"
-                    aria-expanded="false"
-                    aria-controls="modelSelectMenu"
+                    aria-label="Close settings" data-i18n-title="account.close"
                   >
-                    <span id="modelSelectValue" data-i18n="chat.model">Model</span>
-                    <i data-lucide="chevron-down"></i>
+                    <i data-lucide="x"></i>
                   </button>
-                  <div
-                    class="custom-select-menu hidden"
-                    id="modelSelectMenu"
-                    role="listbox"
-                    aria-label="Model"
-                  ></div>
                 </div>
-                <div
-                  class="select-shell custom-select-shell"
-                  data-custom-select="personality"
-                >
-                  <span data-i18n="chat.personality">Personality</span>
-                  <select
-                    class="native-select-hidden"
-                    id="personalitySelect"
-                    aria-hidden="true"
-                    tabindex="-1"
-                  ></select>
-                  <button
-                    class="custom-select-button"
-                    id="personalitySelectButton"
-                    type="button"
-                    aria-haspopup="listbox"
-                    aria-expanded="false"
-                    aria-controls="personalitySelectMenu"
-                  >
-                    <span id="personalitySelectValue" data-i18n="chat.personality">Personality</span>
-                    <i data-lucide="chevron-down"></i>
-                  </button>
-                  <div
-                    class="custom-select-menu hidden"
-                    id="personalitySelectMenu"
-                    role="listbox"
-                    aria-label="Personality"
-                  ></div>
+
+                <div class="settings-scroll">
+                  <section class="settings-section" aria-labelledby="settingsModelHeading">
+                    <h3 class="settings-section-title" id="settingsModelHeading">
+                      <i data-lucide="cpu"></i>
+                      <span data-i18n="settings.modelSection">Model</span>
+                    </h3>
+                    <div
+                      class="select-shell custom-select-shell"
+                      data-custom-select="model"
+                    >
+                      <span data-i18n="chat.model">Model</span>
+                      <select
+                        class="native-select-hidden"
+                        id="modelSelect"
+                        aria-hidden="true"
+                        tabindex="-1"
+                      ></select>
+                      <button
+                        class="custom-select-button"
+                        id="modelSelectButton"
+                        type="button"
+                        aria-haspopup="listbox"
+                        aria-expanded="false"
+                        aria-controls="modelSelectMenu"
+                      >
+                        <span id="modelSelectValue" data-i18n="chat.model">Model</span>
+                        <i data-lucide="chevron-down"></i>
+                      </button>
+                      <div
+                        class="custom-select-menu hidden"
+                        id="modelSelectMenu"
+                        role="listbox"
+                        aria-label="Model"
+                      ></div>
+                    </div>
+                    <div
+                      class="select-shell custom-select-shell"
+                      data-custom-select="personality"
+                    >
+                      <span data-i18n="chat.personality">Personality</span>
+                      <select
+                        class="native-select-hidden"
+                        id="personalitySelect"
+                        aria-hidden="true"
+                        tabindex="-1"
+                      ></select>
+                      <button
+                        class="custom-select-button"
+                        id="personalitySelectButton"
+                        type="button"
+                        aria-haspopup="listbox"
+                        aria-expanded="false"
+                        aria-controls="personalitySelectMenu"
+                      >
+                        <span id="personalitySelectValue" data-i18n="chat.personality">Personality</span>
+                        <i data-lucide="chevron-down"></i>
+                      </button>
+                      <div
+                        class="custom-select-menu hidden"
+                        id="personalitySelectMenu"
+                        role="listbox"
+                        aria-label="Personality"
+                      ></div>
+                    </div>
+                  </section>
+
+                  <section class="settings-section" aria-labelledby="settingsReasoningHeading">
+                    <h3 class="settings-section-title" id="settingsReasoningHeading">
+                      <i data-lucide="brain"></i>
+                      <span data-i18n="settings.reasoningSection">Reasoning</span>
+                    </h3>
+                    <label class="thinking-toggle">
+                      <input id="thinkingToggle" type="checkbox" />
+                      <span class="toggle-track"></span>
+                      <span class="toggle-copy">
+                        <strong data-i18n="chat.thinking">Thinking</strong>
+                        <small data-i18n="settings.thinkingHint">Let Gatita reason before answering</small>
+                      </span>
+                    </label>
+                    <label
+                      class="thinking-toggle research-control"
+                      title="Research is available for signed-in accounts" data-i18n-title="chat.researchHint"
+                    >
+                      <input id="researchToggle" type="checkbox" />
+                      <span class="toggle-track"></span>
+                      <span class="toggle-copy">
+                        <strong data-i18n="chat.research">Research</strong>
+                        <small data-i18n="settings.researchHint">Search the web for fresh sources</small>
+                      </span>
+                    </label>
+                    <label
+                      class="thinking-toggle research-control"
+                      title="Deep research is available for signed-in accounts" data-i18n-title="chat.deepResearchHint"
+                    >
+                      <input id="deepResearchToggle" type="checkbox" />
+                      <span class="toggle-track"></span>
+                      <span class="toggle-copy">
+                        <strong data-i18n="chat.deepResearch">Deep research</strong>
+                        <small data-i18n="settings.deepResearchHint">Longer, multi-source investigation</small>
+                      </span>
+                    </label>
+                    <label
+                      class="thinking-toggle research-control"
+                      title="Gatita Agent lets the assistant decide when to think and research" data-i18n-title="chat.gatitaAgentHint"
+                    >
+                      <input id="agenticToggle" type="checkbox" />
+                      <span class="toggle-track"></span>
+                      <span class="toggle-copy">
+                        <strong data-i18n="chat.gatitaAgent">Gatita Agent</strong>
+                        <small data-i18n="settings.agentHint">Automatically picks tools for you</small>
+                      </span>
+                    </label>
+                  </section>
+
+                  <section class="settings-section" aria-labelledby="settingsMoreHeading">
+                    <h3 class="settings-section-title" id="settingsMoreHeading">
+                      <i data-lucide="layout-grid"></i>
+                      <span data-i18n="settings.moreSection">More</span>
+                    </h3>
+                    <a class="settings-link" href="api.html">
+                      <i data-lucide="layout-dashboard"></i>
+                      <span class="settings-link-copy">
+                        <strong data-i18n="sidebar.api">API dashboard</strong>
+                        <small data-i18n="sidebar.apiHint">Keys, usage &amp; docs</small>
+                      </span>
+                      <i data-lucide="arrow-right" class="settings-link-arrow"></i>
+                    </a>
+                    <button class="settings-link" id="settingsAccountButton" type="button">
+                      <i data-lucide="user-round"></i>
+                      <span class="settings-link-copy">
+                        <strong data-i18n="account.settings">Account settings</strong>
+                        <small data-i18n="settings.accountHint">Profile, password &amp; notifications</small>
+                      </span>
+                      <i data-lucide="arrow-right" class="settings-link-arrow"></i>
+                    </button>
+                  </section>
                 </div>
-                <label class="thinking-toggle">
-                  <input id="thinkingToggle" type="checkbox" />
-                  <span class="toggle-track"></span>
-                  <span data-i18n="chat.thinking">Thinking</span>
-                </label>
-                <label
-                  class="thinking-toggle research-control"
-                  title="Research is available for signed-in accounts" data-i18n-title="chat.researchHint"
-                >
-                  <input id="researchToggle" type="checkbox" />
-                  <span class="toggle-track"></span>
-                  <span data-i18n="chat.research">Research</span>
-                </label>
-                <label
-                  class="thinking-toggle research-control"
-                  title="Deep research is available for signed-in accounts" data-i18n-title="chat.deepResearchHint"
-                >
-                  <input id="deepResearchToggle" type="checkbox" />
-                  <span class="toggle-track"></span>
-                  <span data-i18n="chat.deepResearch">Deep research</span>
-                </label>
-                <label
-                  class="thinking-toggle research-control"
-                  title="Gatita Agent lets the assistant decide when to think and research" data-i18n-title="chat.gatitaAgentHint"
-                >
-                  <input id="agenticToggle" type="checkbox" />
-                  <span class="toggle-track"></span>
-                  <span data-i18n="chat.gatitaAgent">Gatita Agent</span>
-                </label>
               </div>
             </div>
             <button
@@ -866,7 +942,7 @@
       src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"
       defer
     ></script>
-    <script src="app.js?v=20260817c" defer></script>
+    <script src="app.js?v=20260922a" defer></script>
     <script>
       (function () {
         var preloader = document.getElementById("preloader");
