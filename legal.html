@@ -1,176 +1,647 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gatita Ask Legal</title>
-    <meta name="description" content="Terms of Service and Privacy Policy for Gatita Ask.">
-    <meta name="theme-color" content="#542d14">
-    <link rel="canonical" href="https://gatita.tech/legal.html">
-    <link rel="icon" href="assets/avatar.webp" type="image/webp">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260817c">
-</head>
-<body class="legal-page">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <title data-i18n="Terms &amp; Privacy · Gatita"></title>
+    <meta
+      name="description"
+      content="Terms of Service, Privacy Policy, and API terms for Gatita Ask and the Gatita API."
+    />
+    <meta name="theme-color" content="#000000" />
+    <link rel="canonical" href="https://gatita.tech/legal.html" />
+    <link rel="icon" href="assets/logo.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css?v=20261006a" />
+    <script src="i18n.js?v=20261006a"></script>
+  </head>
+  <body>
     <div class="preloader" id="preloader" aria-hidden="true">
-        <div class="preloader-core">
-            <div class="preloader-logo">
-                <img src="assets/avatar.webp" alt="" width="96" height="96">
-                <span class="preloader-ring" aria-hidden="true"></span>
-                <span class="preloader-pulse" aria-hidden="true"></span>
-            </div>
-            <span class="preloader-word">Gatita</span>
+      <div class="preloader-core">
+        <div class="preloader-logo">
+          <img src="assets/avatar.webp" alt="" width="84" height="84" />
+          <span class="preloader-sheen" aria-hidden="true"></span>
         </div>
+      </div>
     </div>
-    <main class="legal-shell">
-        <nav class="legal-nav" aria-label="Legal navigation">
-            <a class="brand" href="index.html" aria-label="Back to Gatita Ask">
-                <img src="assets/avatar.webp" alt="" width="36" height="36">
-                <span>Gatita Ask</span>
-            </a>
-            <div>
-                <a href="#terms">Terms</a>
-                <a href="#privacy">Privacy</a>
-                <a href="#contact">Contact</a>
-            </div>
-        </nav>
 
-        <header class="legal-hero">
-            <p>Effective date: May 23, 2026</p>
-            <h1>Terms of Service & Privacy Policy</h1>
-            <p>Gatita Ask is built with privacy as a priority. Chats are kept private by default, are not sold, and are not used to train models or enhance services.</p>
+    <main class="page-shell">
+      <aside class="page-sidebar" aria-label="Legal sections">
+        <div class="page-sidebar-head">
+          <a class="brand" href="index.html" aria-label="Back to Gatita Ask">
+            <img src="assets/avatar.webp" alt="" width="30" height="30" />
+            <span data-i18n="Legal"></span>
+          </a>
+          <a class="icon-btn" href="index.html" aria-label="Back to Ask" title="Back to Ask">
+            <i data-lucide="arrow-left"></i>
+          </a>
+        </div>
+
+        <nav class="page-nav" id="legalNav" aria-label="On this page">
+          <div class="page-nav-group">
+            <h3 data-i18n="Terms of Service"></h3>
+            <a href="#terms-1" class="page-nav-item" data-i18n="Acceptance"></a>
+            <a href="#terms-2" class="page-nav-item" data-i18n="The service"></a>
+            <a href="#terms-3" class="page-nav-item" data-i18n="Accounts"></a>
+            <a href="#terms-4" class="page-nav-item" data-i18n="Plans &amp; billing"></a>
+            <a href="#terms-5" class="page-nav-item" data-i18n="Acceptable use"></a>
+            <a href="#terms-6" class="page-nav-item" data-i18n="Your content"></a>
+            <a href="#terms-7" class="page-nav-item" data-i18n="Ownership"></a>
+            <a href="#terms-8" class="page-nav-item" data-i18n="No training"></a>
+            <a href="#terms-9" class="page-nav-item" data-i18n="Third parties"></a>
+            <a href="#terms-10" class="page-nav-item" data-i18n="Strikes"></a>
+            <a href="#terms-11" class="page-nav-item" data-i18n="Warranties"></a>
+            <a href="#terms-12" class="page-nav-item" data-i18n="Liability"></a>
+            <a href="#terms-13" class="page-nav-item" data-i18n="Changes"></a>
+            <a href="#terms-14" class="page-nav-item" data-i18n="General terms"></a>
+          </div>
+
+          <div class="page-nav-group">
+            <h3 data-i18n="Privacy Policy"></h3>
+            <a href="#privacy-1" class="page-nav-item" data-i18n="Our promise"></a>
+            <a href="#privacy-2" class="page-nav-item" data-i18n="Data collected"></a>
+            <a href="#privacy-3" class="page-nav-item" data-i18n="Why we use it"></a>
+            <a href="#privacy-4" class="page-nav-item" data-i18n="Legal bases"></a>
+            <a href="#privacy-5" class="page-nav-item" data-i18n="Cookies &amp; storage"></a>
+            <a href="#privacy-6" class="page-nav-item" data-i18n="AI processing"></a>
+            <a href="#privacy-7" class="page-nav-item" data-i18n="Research"></a>
+            <a href="#privacy-8" class="page-nav-item" data-i18n="Sharing &amp; links"></a>
+            <a href="#privacy-9" class="page-nav-item" data-i18n="Processors"></a>
+            <a href="#privacy-10" class="page-nav-item" data-i18n="Retention"></a>
+            <a href="#privacy-11" class="page-nav-item" data-i18n="Security"></a>
+            <a href="#privacy-12" class="page-nav-item" data-i18n="Transfers"></a>
+            <a href="#privacy-13" class="page-nav-item" data-i18n="Your rights"></a>
+            <a href="#privacy-14" class="page-nav-item" data-i18n="Children"></a>
+            <a href="#privacy-15" class="page-nav-item" data-i18n="Automated decisions"></a>
+            <a href="#privacy-16" class="page-nav-item" data-i18n="Do not track"></a>
+            <a href="#privacy-17" class="page-nav-item" data-i18n="Policy changes"></a>
+          </div>
+
+          <div class="page-nav-group">
+            <h3 data-i18n="Also"></h3>
+            <a href="#api" class="page-nav-item" data-i18n="API terms"></a>
+            <a href="#contact" class="page-nav-item" data-i18n="Contact"></a>
+          </div>
+        </nav>
+      </aside>
+
+      <section class="page-main legal-main">
+        <header class="page-topbar">
+          <button
+            class="icon-btn page-sidebar-toggle"
+            id="sidebarToggle"
+            type="button"
+            aria-label="Toggle navigation"
+          >
+            <i data-lucide="menu"></i>
+          </button>
+          <h1 data-i18n="Legal"></h1>
+          <div class="page-topbar-actions">
+            <a class="btn btn-sm" href="index.html">
+              <i data-lucide="message-square"></i>
+              <span data-i18n="Ask"></span>
+            </a>
+            <a class="btn btn-sm" href="api-docs.html">
+              <i data-lucide="book-open"></i>
+              <span data-i18n="Docs"></span>
+            </a>
+          </div>
         </header>
 
-        <section class="legal-card" id="terms">
-            <h2>Terms of Service</h2>
-            <h3>1. Acceptance</h3>
-            <p>By using Gatita Ask, you agree to these Terms of Service and the Privacy Policy below. If you do not agree, do not use the service.</p>
+        <!-- ============ HERO ============ -->
+        <header class="legal-hero">
+          <h1 data-i18n="Terms of Service &amp; Privacy Policy"></h1>
+          <p data-i18n="One document, two parts: the rules for using Gatita, and what happens to your data. Both apply to Gatita Ask, this dashboard, and the public API."></p>
+          <div class="legal-meta">
+            <span class="pill" data-i18n="Effective October 5, 2026"></span>
+            <span class="pill" data-i18n="Version 2026-10-05"></span>
+          </div>
+        </header>
 
-            <h3>2. Beta Service</h3>
-            <p>Gatita Ask is provided as a beta AI chat service. AI responses may be incomplete, incorrect, biased, outdated, or unsuitable for your situation. Verify critical facts before relying on an answer, especially for legal, medical, financial, safety, or high-impact decisions.</p>
-
-            <h3>3. Accounts and Security</h3>
-            <p>You are responsible for your account, password, and activity under your session. Use a strong password and do not share your login. Gatita may apply verification, rate limits, abuse checks, and temporary restrictions to protect the service from spam, scraping, automated abuse, and attacks.</p>
-
-            <h3>4. Acceptable Use</h3>
-            <p>You may not use Gatita Ask to request, create, upload, share, or facilitate content that is illegal, abusive, exploitative, or harmful. This includes malware, credential theft, phishing, ban evasion, raids, spam, sexual content involving minors, instructions for violent wrongdoing, attempts to expose private prompts or secrets, and attempts to bypass safety or security systems.</p>
-
-            <h3>5. Chats, Files, and Shared Links</h3>
-            <p>You are responsible for the messages and files you submit. Uploaded files are processed so Gatita Ask can answer your request. Share links make a chat visible to anyone with the link until sharing is disabled or the chat is deleted. Do not share private, confidential, or sensitive information unless you understand the risk.</p>
-
-            <h3>6. Ownership</h3>
-            <p>You keep your rights in content you submit. Gatita does not claim ownership of your chats or uploaded files. Subject to these Terms, you may use AI outputs for your own purposes, but you are responsible for reviewing outputs and ensuring your use is lawful and appropriate.</p>
-
-            <h3>7. No Training or Service Enhancement Use</h3>
-            <p>Gatita does not use your chats, uploaded files, account data, or generated responses to train AI models, fine-tune models, build datasets, profile users, sell data, or enhance services. Data is processed only to provide the requested service, keep your chat history, secure the platform, enforce limits, and comply with legal obligations.</p>
-
-            <h3>8. Third-Party Providers</h3>
-            <p>Gatita Ask uses service providers to operate the product, including web/search sources when Research or Auto web check is used. These providers receive only the information needed to perform their function. Gatita does not authorize providers to use your chats or files for training, advertising, resale, or unrelated service improvement.</p>
-
-            <h3>9. Availability and Changes</h3>
-            <p>The service may change, pause, rate-limit, or stop at any time. Features, models, personalities, limits, research behavior, and storage behavior may be updated as Gatita Ask improves.</p>
-
-            <h3>10. Disclaimers</h3>
-            <p>Gatita Ask is provided "as is" and "as available." To the fullest extent allowed by law, Gatita disclaims warranties of accuracy, reliability, availability, fitness for a particular purpose, and non-infringement. AI output is not professional advice.</p>
-
-            <h3>11. Limitation of Liability</h3>
-            <p>To the fullest extent allowed by law, Gatita and its operators will not be liable for indirect, incidental, special, consequential, exemplary, or punitive damages, or for lost profits, lost data, or reliance on AI output.</p>
-
-            <h3>12. Termination</h3>
-            <p>Gatita may suspend or terminate access if you violate these terms, abuse the service, attempt to bypass security, or create risk for other users or the platform.</p>
+        <!-- ============ SHORT VERSION ============ -->
+        <section class="legal-summary" id="summary">
+          <h2 data-i18n="The short version"></h2>
+          <div class="legal-summary-grid">
+            <article class="legal-summary-card">
+              <i data-lucide="lock"></i>
+              <strong data-i18n="Chats are private"></strong>
+              <span data-i18n="Only you can read your chats. Nothing is visible to other users unless you create a share link yourself."></span>
+            </article>
+            <article class="legal-summary-card">
+              <i data-lucide="eye-off"></i>
+              <strong data-i18n="Never used for training"></strong>
+              <span data-i18n="Your chats, files, prompts, and responses are not used to train or fine-tune models, build datasets, or profile you."></span>
+            </article>
+            <article class="legal-summary-card">
+              <i data-lucide="ban"></i>
+              <strong data-i18n="Never sold"></strong>
+              <span data-i18n="No personal information is sold, rented, or traded. Revenue comes from optional paid API plans, not from your data."></span>
+            </article>
+            <article class="legal-summary-card">
+              <i data-lucide="cookie"></i>
+              <strong data-i18n="No ad tracking"></strong>
+              <span data-i18n="No advertising or cross-site tracking cookies. Only storage that login, security, and rate limits actually require."></span>
+            </article>
+            <article class="legal-summary-card">
+              <i data-lucide="trash-2"></i>
+              <strong data-i18n="Leave any time"></strong>
+              <span data-i18n="Delete a chat or a message instantly. Delete your account from settings. All of your data is gone after a 7-day grace window."></span>
+            </article>
+            <article class="legal-summary-card">
+              <i data-lucide="key-round"></i>
+              <strong data-i18n="Your keys, your risk"></strong>
+              <span data-i18n="API keys are shown once. We never store the full value, so it cannot be recovered. Keys can only be revoked and replaced."></span>
+            </article>
+          </div>
+          <div class="legal-callout">
+            <strong data-i18n="One honest caveat"></strong>
+            Gatita is a beta AI service. Answers can be wrong, and you are
+            responsible for checking anything important. The rest of this
+            document describes exactly what happens to your data.
+          </div>
         </section>
 
-        <section class="legal-card" id="privacy">
-            <h2>Privacy Policy</h2>
-            <h3>1. Privacy Commitment</h3>
-            <p>Gatita Ask treats chat privacy as a priority. Chats are private by default, are not sold, and are not used for training or service enhancement. Gatita aims to be privacy-conscious and eco-friendly by limiting energy use, avoiding all possible tracking, and only using energy from renewable sources.</p>
+        <!-- ================================================================
+             TERMS OF SERVICE
+             ================================================================ -->
+        <section class="legal-section" id="terms">
+          <h2><i data-lucide="file-text"></i> <span data-i18n="Terms of Service">Terms of Service</span></h2>
+          <p class="legal-lede" data-i18n-html="These Terms govern your use of Gatita Ask, the API dashboard at &lt;code&gt;api.html&lt;/code&gt;, and the public API. Using the service means you accept them."></p>
 
-            <h3>2. Data We Collect</h3>
-            <ul>
-                <li><strong>Account data:</strong> email address, display name, password hash and salt, account creation/update time, and last login time.</li>
-                <li><strong>Session and security data:</strong> hashed session tokens, session expiration, user-agent text, hashed IP-related data, guest identifier, browser security challenge results, and request metadata needed to prevent spam and abuse.</li>
-                <li><strong>Chat data:</strong> chat titles, messages, model/personality settings, thinking/research settings, sources, shared-link tokens, pinned/folder settings, and timestamps.</li>
-                <li><strong>File data:</strong> file name, content type, size, and submitted content when needed to answer your request. The service stores file metadata with the chat; readable file content is used for the AI request.</li>
-                <li><strong>Usage data:</strong> per-minute message events and Deep research usage events so limits can be enforced.</li>
-                <li><strong>Browser storage:</strong> local browser storage may keep your session token, guest ID, selected model, personality, thinking/research settings, and interface preferences.</li>
-            </ul>
+          <h3 id="terms-1"><span class="legal-clause-num">1.</span> <span data-i18n="Acceptance and eligibility">Acceptance and eligibility</span></h3>
+          <p data-i18n="By creating an account or making a request you agree to these Terms and the Privacy Policy. If you do not agree, do not use Gatita. You must be at least 13 years old, and if you are under 18 you need a parent or guardian's permission. Using the service on behalf of an organisation means you have authority to bind that organisation, and &quot;you&quot; includes it."></p>
 
-            <h3>3. Why We Collect It</h3>
-            <ul>
-                <li>To create accounts, authenticate users, and keep users signed in.</li>
-                <li>To save chats, messages, shared links, pins, folders, and per-chat preferences.</li>
-                <li>To process prompts, files, images, and research requests.</li>
-                <li>To verify browser requests and reduce spam, bots, scraping, abuse, and automated attacks.</li>
-                <li>To enforce message-per-minute limits and Deep research limits.</li>
-                <li>To debug reliability and protect the service, users, and backend API.</li>
-            </ul>
+          <h3 id="terms-2"><span class="legal-clause-num">2.</span> <span data-i18n="The service">The service</span></h3>
+          <p data-i18n="Gatita is a beta AI chat service and an OpenAI-compatible API. Model output may be incomplete, incorrect, biased, outdated, or unsuitable for your situation, and it may change or be withdrawn at any time. Verify anything consequential before relying on it, especially for legal, medical, financial, safety, employment, or other high-impact decisions."></p>
+          <h3 id="terms-3"><span class="legal-clause-num">3.</span> <span data-i18n="Accounts and security">Accounts and security</span></h3>
+          <p data-i18n="You are responsible for your account, password, and every action taken under your session. Use a unique strong password, do not share your login, and keep your API keys secret. Tell us promptly if you think an account or key has been compromised."></p>
+          <p data-i18n="To protect the service and its users we may apply browser verification, rate limits, abuse detection, temporary restrictions, and strikes. These measures are applied to signed-out guests as well as accounts."></p>
 
-            <h3>4. Cookies and Similar Technologies</h3>
-            <p>Gatita Ask uses local storage and may use cookies or similar browser technologies for security, authentication, verification, preferences, and spam reduction. Browser security checks may set, read, or compute challenge tokens to confirm that requests are legitimate. These technologies are used to protect the service, not for ad targeting.</p>
+          <h3 id="terms-4"><span class="legal-clause-num">4.</span> <span data-i18n="Plans, billing, and cancellation">Plans, billing, and cancellation</span></h3>
+          <p data-i18n="The chat product is free. The API has optional paid tiers (such as Plus and Pro) with higher request, rate, and token limits. Paid plans renew until cancelled and can be cancelled at any time from the dashboard; cancellation stops future billing and takes effect at the end of the current period."></p>
+          <dl class="legal-rows">
+            <div class="legal-row">
+              <dt data-i18n="Billing"></dt>
+              <dd data-i18n="Charges are made to the payment method on file at the start of each period. Prices, currency, and included limits are shown before you confirm any change."></dd>
+            </div>
+            <div class="legal-row">
+              <dt data-i18n="Refunds"></dt>
+              <dd data-i18n="Because paid tiers unlock additional capacity rather than content, used portions are generally not refundable. Unused time may be refunded where required by law, or at Gatita's discretion."></dd>
+            </div>
+            <div class="legal-row">
+              <dt data-i18n="Limit changes"></dt>
+              <dd data-i18n="Plan limits can be adjusted for abuse prevention, capacity, or operational reasons. We will tell you before a change affects a plan you have already paid for."></dd>
+            </div>
+            <div class="legal-row">
+              <dt data-i18n="Taxes"></dt>
+              <dd data-i18n="Prices exclude taxes where the law requires them to be added. You are responsible for taxes arising from your use, other than taxes on Gatita's own income."></dd>
+            </div>
+          </dl>
 
-            <h3>5. AI Processing</h3>
-            <p>Your messages, relevant chat context, uploaded content, selected settings, and current session details are sent to our servers to generate responses. Gatita does not use this data for training, fine-tuning, analytics datasets, advertising, profiling, resale, or service enhancement.</p>
+          <h3 id="terms-5"><span class="legal-clause-num">5.</span> <span data-i18n="Acceptable use">Acceptable use</span></h3>
+          <p data-i18n="You may not use Gatita to request, create, upload, share, transmit, or facilitate anything illegal, abusive, exploitative, or harmful. Prohibited uses include:"></p>
+          <ul>
+            <li data-i18n="Malware, ransomware, exploits, or instructions to build them."></li>
+            <li data-i18n="Credential theft, phishing, impersonation, or fraud."></li>
+            <li data-i18n="Ban evasion, striping, or attempts to bypass safety or security controls."></li>
+            <li data-i18n="Spam, bulk outreach, scraping, or automated abuse of the chat or API."></li>
+            <li data-i18n="Sexual content that involves minors, or any sexualisation of a minor."></li>
+            <li data-i18n="Violence, self-harm encouragement, or instructions for serious wrongdoing."></li>
+            <li data-i18n="Attempts to expose private prompts, internal system text, or another user's data."></li>
+            <li data-i18n="Surveillance, stalking, or targeting individuals with harmful content."></li>
+          </ul>
+          <p data-i18n="We may remove content, restrict features, strike accounts, revoke API keys, or suspend access when we reasonably believe these rules have been broken."></p>
 
-            <h3>6. Research and Auto Web Check</h3>
-            <p>If you enable Research, Deep research, or Auto web check, Gatita Ask may generate search queries, send those queries to a search provider, fetch result pages, and include source snippets in the AI context. Source websites may receive server-side requests from Gatita Ask. Links used by the AI may be shown under Sources.</p>
+          <h3 id="terms-6"><span class="legal-clause-num">6.</span> <span data-i18n="Your content, files, and share links">Your content, files, and share links</span></h3>
+          <p data-i18n="You keep all rights in the messages, files, and other content you submit. You grant Gatita only the narrow, temporary permission needed to process that content and return an answer. In accordance with our privacy policy, we do not save any file you download - it is only used for processing once."></p>
+          <p data-i18n="You are responsible for what you submit and must have the right to share it. Do not submit other people's personal information, or material you obtained in confidence, unless you are authorised to do so."></p>
+          <p data-i18n-html="&lt;strong&gt;Share links are public to anyone holding them.&lt;/strong&gt; A shared chat can be read by its holder until you disable sharing or delete the chat. If a link leaks, please rotate it. There is no way to know who has already saved a copy."></p>
 
-            <h3>7. Sharing</h3>
-            <p>Chats are private unless you create a share link. A shared chat can be viewed by anyone who has the link. Shared links use random tokens and can be disabled by deleting the chat or disabling sharing where available.</p>
+          <h3 id="terms-7"><span class="legal-clause-num">7.</span> <span data-i18n="Ownership and output">Ownership and output</span></h3>
+          <p data-i18n="As between you and Gatita, you own your input and, subject to these Terms, may use the generated output for any lawful purpose. Gatita claims no ownership of your chats or uploads."></p>
+          <p data-i18n="Output is produced algorithmically and may not be unique. Gatita does not guarantee that any output is free of third-party rights, accurate, or fit for a particular purpose, and you are responsible for reviewing it before relying on it."></p>
 
-            <h3>8. Data Retention</h3>
-            <p>Chats and account data are retained so the service can provide chat history and account access. Deleted chats are archived or removed from normal access. Account deletion can be scheduled from account settings and is finalized after 7 days unless you sign back in first. Some security and usage records may remain for a limited time to prevent abuse, investigate incidents, meet legal obligations, or maintain service integrity.</p>
+          <h3 id="terms-8"><span class="legal-clause-num">8.</span> <span data-i18n="No training, no sale, no enhancement">No training, no sale, no enhancement</span></h3>
+          <p data-i18n-html="Gatita does &lt;strong&gt;not&lt;/strong&gt; use your chats, prompts, uploaded files, account data, API traffic, or generated responses to train or fine-tune AI models, build or sell datasets, create derived profiles, advertise to you, or improve the product beyond operating and securing it. Data is processed only to answer your request, keep your history, enforce limits, protect the platform, and meet legal obligations."></p>
+          <div class="legal-callout">
+            <strong data-i18n="This commitment is the whole point"></strong>
+            It applies to free and paid tiers alike. If Gatita ever wanted to
+            change that, it would need your consent first, and this policy would
+            say so before anything changed.
+          </div>
 
-            <h3>9. Data We Do Not Sell or Train On</h3>
-            <p>Gatita does not sell your personal information. Gatita does not use your chats, files, prompts, responses, account information, or usage records to train AI models or enhance services. No chat content is used to build public or private training datasets.</p>
+          <h3 id="terms-9"><span class="legal-clause-num">9.</span> <span data-i18n="Third-party services">Third-party services</span></h3>
+          <p data-i18n="Gatita uses infrastructure and service providers for email, payments, and search or web sources when Research, Deep research, or Auto web check is used. These providers are only used to operate the product you request. Each provider receives only what its function requires. Gatita does not authorise providers to use your chats or files for their own training, advertising, resale, or unrelated product improvement."></p>
+          <p data-i18n="Third-party links and sources are provided as-is. Gatita does not control them and is not responsible for their content or practices."></p>
 
-            <h3>10. Security</h3>
-            <p>Gatita uses privacy-minded security practices such as password hashing, session token hashing, origin checks, browser security challenges, rate limiting, and limited data collection. No internet service can guarantee perfect security, but Gatita designs Ask to collect only what is needed and to protect stored data with care.</p>
+          <h3 id="terms-10"><span class="legal-clause-num">10.</span> <span data-i18n="Strikes, suspension, and termination">Strikes, suspension, and termination</span></h3>
+          <p data-i18n-html="A &lt;strong&gt;strike&lt;/strong&gt; is a formal warning recorded against an account or API key for a policy violation such as automated abuse or an attempt to bypass safety controls. A strike can pause chat or API access for a period, and on paid tiers may leave access enabled while the strike is active."></p>
+          <p data-i18n="We may suspend or terminate access if you repeatedly break these Terms, abuse the service, attempt to bypass security controls, or create risk for other users or the platform. Strikes can be appealed through support. We will tell you why access was limited wherever we are able to do so safely."></p>
 
-            <h3>11. Children</h3>
-            <p>Gatita Ask is not intended for children under 13. Do not use the service if you are under 13. If you believe a child has submitted personal information, contact Gatita so the information can be reviewed and removed where appropriate.</p>
+          <h3 id="terms-11"><span class="legal-clause-num">11.</span> <span data-i18n="Disclaimers">Disclaimers</span></h3>
+          <p data-i18n="Gatita is provided &quot;as is&quot; and &quot;as available&quot;. To the fullest extent permitted by law, Gatita disclaims all warranties, express or implied, including accuracy, reliability, availability, non-infringement, and fitness for a particular purpose. AI output is not professional advice and does not create a professional relationship."></p>
 
-            <h3>12. Your Choices</h3>
-            <ul>
-                <li>You can delete chats and messages from the interface.</li>
-                <li>You can avoid sharing chats by not creating share links.</li>
-                <li>You can disable Research, Deep research, Thinking, and Auto web check in settings.</li>
-                <li>You can remove local browser storage by signing out and clearing site data in your browser.</li>
-                <li>You can schedule account deletion from account settings; signing back in before the 7-day deadline cancels the request.</li>
-                <li>You can request access, correction, export, or deletion of account information by contacting Gatita.</li>
-            </ul>
+          <h3 id="terms-12"><span class="legal-clause-num">12.</span> <span data-i18n="Limitation of liability">Limitation of liability</span></h3>
+          <p data-i18n="To the fullest extent permitted by law, Gatita and its operators are not liable for indirect, incidental, special, consequential, exemplary, or punitive damages, nor for lost profits, lost data, lost goodwill, or reliance on AI output. Nothing in these Terms excludes liability that cannot be excluded by law."></p>
 
-            <h3>13. Legal Requests and Safety</h3>
-            <p>Gatita may disclose information if required by law, to protect users or the service, to investigate abuse, to enforce these terms, or to respond to valid legal process.</p>
+          <h3 id="terms-13"><span class="legal-clause-num">13.</span> <span data-i18n="Changes to these Terms">Changes to these Terms</span></h3>
+          <p data-i18n="We may update these Terms as the service changes. The effective date and version at the top of this page always show which version applies. For material changes we will provide reasonable notice in the product or on this page, and ask you to accept them before they take effect. Continuing to use Gatita after a change means you accept it."></p>
 
-            <h3>14. Changes to This Policy</h3>
-            <p>Gatita may update this page as the service changes. If changes are material, the effective date will be updated and reasonable notice may be provided in the product or on the website.</p>
+          <h3 id="terms-14"><span class="legal-clause-num">14.</span> <span data-i18n="General terms">General terms</span></h3>
+          <dl class="legal-rows">
+            <div class="legal-row">
+              <dt data-i18n="Governing law"></dt>
+              <dd data-i18n="These Terms are governed by the laws applicable where Gatita is published, without regard to conflict-of-law rules. Nothing removes protections you have under the mandatory law where you live."></dd>
+            </div>
+            <div class="legal-row">
+              <dt data-i18n="Severability"></dt>
+              <dd data-i18n="If a provision is found unenforceable, the rest of these Terms stay in force and the provision is read as narrowly as possible."></dd>
+            </div>
+            <div class="legal-row">
+              <dt data-i18n="Waiver"></dt>
+              <dd data-i18n="Failing to enforce a provision once does not waive it later."></dd>
+            </div>
+            <div class="legal-row">
+              <dt data-i18n="Assignment"></dt>
+              <dd data-i18n="You may not assign these Terms. Gatita may assign them as part of a merger, reorganisation, or sale of the service, with notice to you."></dd>
+            </div>
+            <div class="legal-row">
+              <dt data-i18n="Notices"></dt>
+              <dd data-i18n="We may notify you in-product or by email. You agree that email and in-product notices are valid delivery."></dd>
+            </div>
+            <div class="legal-row">
+              <dt data-i18n="Entire agreement"></dt>
+              <dd data-i18n="These Terms, the Privacy Policy, and the API terms are the entire agreement between you and Gatita about the service."></dd>
+            </div>
+          </dl>
         </section>
 
-        <section class="legal-card" id="contact">
-            <h2>Contact</h2>
-            <p>For privacy, security, account, or legal questions, contact: <a href="mailto:contact@gatita.tech">contact@gatita.tech</a>.</p>
-            <p>This page is intended to describe Gatita Ask accurately and transparently. It should be reviewed by qualified counsel before production use where formal legal compliance is required.</p>
+        <!-- ================================================================
+             PRIVACY POLICY
+             ================================================================ -->
+        <section class="legal-section" id="privacy">
+          <h2><i data-lucide="shield-check"></i> <span data-i18n="Privacy Policy">Privacy Policy</span></h2>
+          <p class="legal-lede" data-i18n="This policy says what Gatita collects, why, who sees it, how long it is kept, and what you can do about it. If a practice here ever changes in a way that affects you, this page changes first."></p>
+
+          <h3 id="privacy-1"><span class="legal-clause-num">1.</span> <span data-i18n="Our privacy commitment">Our privacy commitment</span></h3>
+          <p data-i18n="Chat privacy is the default, not a paid upgrade. Gatita collects the minimum needed to run a chat service, keeps chats private by default, never sells personal information, and never uses your content for training or product enhancement."></p>
+          <p data-i18n="Gatita also aims to be efficient: we limit energy and storage use, avoid tracking we do not need, and prefer renewable energy where we make infrastructure choices."></p>
+
+          <h3 id="privacy-2"><span class="legal-clause-num">2.</span> <span data-i18n="Data we collect">Data we collect</span></h3>
+          <dl class="legal-rows">
+            <div class="legal-row">
+              <dt data-i18n="Account"></dt>
+              <dd data-i18n="Email address, display name, password hash and salt, and account creation, update, and last-login timestamps. Your display name is used to address you in the product."></dd>
+            </div>
+            <div class="legal-row">
+              <dt data-i18n="Session &amp; security"></dt>
+              <dd data-i18n="Hashed session tokens, session expiry, user-agent text, hashed IP-related data, a guest identifier, browser verification results, and request metadata used to stop spam and automated abuse."></dd>
+            </div>
+            <div class="legal-row">
+              <dt data-i18n="Chats"></dt>
+              <dd data-i18n="Chat titles, messages, selected model and personality, thinking and research settings, cited sources, share-link tokens, pins and folders, and timestamps."></dd>
+            </div>
+            <div class="legal-row">
+              <dt data-i18n="Files"></dt>
+              <dd data-i18n="File name, content type, size, and the submitted content where it is needed to answer your request. Metadata is stored with the chat; readable content is used for the AI request."></dd>
+            </div>
+            <div class="legal-row">
+              <dt data-i18n="Usage"></dt>
+              <dd data-i18n="Per-minute message events and Deep research events, so rate and daily limits can be enforced."></dd>
+            </div>
+            <div class="legal-row">
+              <dt data-i18n="API"></dt>
+              <dd data-i18n="Key names, key hashes and prefixes, creation and expiry dates, last-used timestamps, request and token counts, and the model or endpoint label for a request. These are used for limits, analytics, and abuse prevention. Full key values are never stored."></dd>
+            </div>
+            <div class="legal-row">
+              <dt data-i18n="Browser storage"></dt>
+              <dd data-i18n="Session token, guest ID, selected model and personality, thinking and research settings, notification preference, and interface preferences. This lives in your browser, not in an ad profile."></dd>
+            </div>
+          </dl>
+
+          <h3 id="privacy-3"><span class="legal-clause-num">3.</span> <span data-i18n="Why we use it">Why we use it</span></h3>
+          <ul>
+            <li data-i18n="To create accounts, authenticate you, and keep you signed in."></li>
+            <li data-i18n="To save chats, messages, share links, pins, folders, and per-chat settings."></li>
+            <li data-i18n="To process prompts, files, images, and research requests."></li>
+            <li data-i18n="To verify browser requests and reduce spam, bots, scraping, and automated attacks."></li>
+            <li data-i18n="To enforce per-minute message limits, Deep research limits, and API rate limits."></li>
+            <li data-i18n="To operate and protect the API, including key management, analytics, and strikes."></li>
+            <li data-i18n="To debug reliability, keep the service secure, and meet legal obligations."></li>
+          </ul>
+
+          <h3 id="privacy-4"><span class="legal-clause-num">4.</span> <span data-i18n="Legal bases">Legal bases</span></h3>
+          <dl class="legal-rows">
+            <div class="legal-row">
+              <dt data-i18n="Contract"></dt>
+              <dd data-i18n="Processing needed to give you the service you asked for: accounts, chats, files, API responses, and billing."></dd>
+            </div>
+            <div class="legal-row">
+              <dt data-i18n="Legitimate interests"></dt>
+              <dd data-i18n="Security, fraud and abuse prevention, rate limiting, service reliability, and answering support requests."></dd>
+            </div>
+            <div class="legal-row">
+              <dt data-i18n="Consent"></dt>
+              <dd data-i18n="Optional browser notifications, and any optional processing where we ask you first. You can withdraw consent at any time in account settings."></dd>
+            </div>
+            <div class="legal-row">
+              <dt data-i18n="Legal obligation"></dt>
+              <dd data-i18n="Retaining limited records where required, responding to valid legal process, and meeting tax and accounting duties."></dd>
+            </div>
+          </dl>
+
+          <h3 id="privacy-5"><span class="legal-clause-num">5.</span> <span data-i18n="Cookies and local storage">Cookies and local storage</span></h3>
+          <p data-i18n="Gatita uses local storage and a small number of cookies. A browser security check may set, read, or compute challenge tokens to confirm a request is legitimate. There are no advertising cookies, no cross-site tracking pixels, and no third-party marketing tags."></p>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th data-i18n="Name"></th>
+                  <th data-i18n="Type"></th>
+                  <th data-i18n="Purpose"></th>
+                  <th data-i18n="Can you turn it off?"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td data-i18n-html="&lt;code&gt;gatita_required_cookies&lt;/code&gt;"></td>
+                  <td data-i18n="Cookie"></td>
+                  <td data-i18n="Records that you acknowledged the required-cookie notice."></td>
+                  <td data-i18n="No. Required for consent to be valid."></td>
+                </tr>
+                <tr>
+                  <td data-i18n="Session cookie"></td>
+                  <td data-i18n="Cookie"></td>
+                  <td data-i18n="Keeps you signed in and protects against cross-site request forgery."></td>
+                  <td data-i18n="Yes. Sign out, or clear site data."></td>
+                </tr>
+                <tr>
+                  <td data-i18n-html="&lt;code&gt;gatita_ask_*&lt;/code&gt;"></td>
+                  <td data-i18n="Local storage"></td>
+                  <td data-i18n="Token, guest ID, model and personality choice, tool toggles, drafts, notification preference."></td>
+                  <td data-i18n="Yes. Clear local data in account settings."></td>
+                </tr>
+                <tr>
+                  <td data-i18n="Browser challenge token"></td>
+                  <td data-i18n="Session storage"></td>
+                  <td data-i18n="Confirms the request came from a real browser session, not a script."></td>
+                  <td data-i18n="No. Required for abuse prevention."></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="privacy-6"><span class="legal-clause-num">6.</span> <span data-i18n="AI processing">AI processing</span></h3>
+          <p data-i18n="To answer you, your messages, the relevant chat context, uploaded content, selected settings, and session details are sent to Gatita servers and processed by the model you selected. That processing happens to serve your request only. It is not used for training, fine-tuning, analytics datasets, advertising, profiling, resale, or service enhancement."></p>
+          <p data-i18n="Context is limited to what is needed for the conversation. Temporary chats are not saved to your account at all."></p>
+
+          <h3 id="privacy-7"><span class="legal-clause-num">7.</span> <span data-i18n="Research and Auto web check">Research and Auto web check</span></h3>
+          <p data-i18n="If you turn on Research, Deep research, or Auto web check, Gatita may generate search queries, send them to a search provider, fetch result pages, and include snippets in the model's context. The pages you see cited under Sources may therefore have received a request from Gatita rather than from your device. All of these tools are off by default and can be disabled in the model picker."></p>
+
+          <h3 id="privacy-8"><span class="legal-clause-num">8.</span> <span data-i18n="Sharing and share links">Sharing and share links</span></h3>
+          <p data-i18n="Chats are private unless you create a share link. A shared chat can be read by anyone holding the link until you disable sharing or delete the chat. Share links use random tokens, so they cannot be guessed."></p>
+          <p data-i18n-html="&lt;strong&gt;We do not sell or share your personal information for advertisers.&lt;/strong&gt; We disclose data only to the processors listed below, in response to valid legal process, or when required to protect users and the service."></p>
+
+          <h3 id="privacy-9"><span class="legal-clause-num">9.</span> <span data-i18n="Service providers">Service providers</span></h3>
+          <p data-i18n="Gatita relies on a small number of processors, each limited to a specific function:"></p>
+          <dl class="legal-rows">
+            <div class="legal-row">
+              <dt data-i18n="Infrastructure &amp; hosting"></dt>
+              <dd data-i18n="Runs the backend that stores chats, files, and account data."></dd>
+            </div>
+            <div class="legal-row">
+              <dt data-i18n="Payments"></dt>
+              <dd data-i18n="Processes paid API plan payments. Gatita never receives your full card number."></dd>
+            </div>
+            <div class="legal-row">
+              <dt data-i18n="Email delivery"></dt>
+              <dd data-i18n="Sends transactional messages such as security notices and deletion confirmations."></dd>
+            </div>
+            <div class="legal-row">
+              <dt data-i18n="Search &amp; web sources"></dt>
+              <dd data-i18n="Used only when you enable Research, Deep research, or Auto web check."></dd>
+            </div>
+          </dl>
+
+          <h3 id="privacy-10"><span class="legal-clause-num">10.</span> <span data-i18n="How long we keep data">How long we keep data</span></h3>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th data-i18n="Data"></th>
+                  <th data-i18n="Retention"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td data-i18n="Active account and chats"></td>
+                  <td data-i18n="Until you delete them or close your account."></td>
+                </tr>
+                <tr>
+                  <td data-i18n="Deleted chats"></td>
+                  <td data-i18n="Removed from normal access promptly; residual backups age out on their normal cycle."></td>
+                </tr>
+                <tr>
+                  <td data-i18n="Account deletion"></td>
+                  <td data-i18n="Finalised 7 days after you schedule it. Signing back in before then cancels it."></td>
+                </tr>
+                <tr>
+                  <td data-i18n="Security and abuse records"></td>
+                  <td data-i18n="Limited retention, only as long as needed to investigate, prevent recurrence, and meet legal duties."></td>
+                </tr>
+                <tr>
+                  <td data-i18n="API usage and key metadata"></td>
+                  <td data-i18n="While the key is active, then limited retention for billing and abuse prevention."></td>
+                </tr>
+                <tr>
+                  <td data-i18n="Browser storage"></td>
+                  <td data-i18n="Until you clear it, sign out and clear site data, or the browser evicts it."></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="privacy-11"><span class="legal-clause-num">11.</span> <span data-i18n="Security">Security</span></h3>
+          <p data-i18n="Gatita uses privacy-minded security: hashed passwords with per-account salts, hashed session tokens, origin checks, browser security challenges, rate limiting, scoped API keys that are stored hashed, and least-privilege access to production data."></p>
+          <p data-i18n="No internet service can promise perfect security. If a breach meaningfully affects your personal data, we will notify affected users and the relevant authority as required by law, and describe what happened and what we changed."></p>
+
+          <h3 id="privacy-12"><span class="legal-clause-num">12.</span> <span data-i18n="International transfers">International transfers</span></h3>
+          <p data-i18n="Gatita and its processors may process data outside your country. Where data is transferred, we rely on appropriate safeguards such as standard contractual clauses or equivalent protections, and we limit transfers to what the service needs."></p>
+
+          <h3 id="privacy-13"><span class="legal-clause-num">13.</span> <span data-i18n="Your rights and controls">Your rights and controls</span></h3>
+          <p data-i18n="Depending on where you live, you may have the right to access, correct, delete, export, or restrict processing of your personal data, to object to certain processing, to withdraw consent, and to complain to a supervisory authority."></p>
+          <dl class="legal-rows">
+            <div class="legal-row">
+              <dt data-i18n="Self-serve"></dt>
+              <dd data-i18n="Delete chats and messages from the interface, disable research tools, turn off notifications, clear local browser data, revoke API keys, and schedule account deletion. Available from the account dock or dashboard."></dd>
+            </div>
+            <div class="legal-row">
+              <dt data-i18n="By request"></dt>
+              <dd data-i18n="Email us to request a copy of your data, a correction, or erasure. We may ask you to confirm your account first."></dd>
+            </div>
+            <div class="legal-row">
+              <dt data-i18n="Appeals"></dt>
+              <dd data-i18n="API strikes and account restrictions can be appealed through support."></dd>
+            </div>
+          </dl>
+
+          <h3 id="privacy-14"><span class="legal-clause-num">14.</span> <span data-i18n="Children">Children</span></h3>
+          <p data-i18n="Gatita is not directed at children under 13, and we do not knowingly collect personal data from them. If you believe a child has submitted personal information, contact us and we will review and delete it where appropriate. Users aged 13-17 are recommended to use the service with a parent or guardian."></p>
+
+          <h3 id="privacy-15"><span class="legal-clause-num">15.</span> <span data-i18n="Automated decision-making">Automated decision-making</span></h3>
+          <p data-i18n="Responses are generated by machine-learning models. Some automated decisions directly affect your access. For example, rate limits, strikes, and bans are applied to protect the service and its users. They are always appealable through support."></p>
+          <p data-i18n="Model output itself is not a binding decision, and it should not be the sole basis for decisions about a person."></p>
+
+          <h3 id="privacy-16"><span class="legal-clause-num">16.</span> <span data-i18n="Do not track signals">Do not track signals</span></h3>
+          <p data-i18n="Gatita does not respond to Do Not Track or Global Privacy Control as a mechanism for ads, because Gatita has no advertising. Optional notifications can be turned off directly in account settings."></p>
+
+          <h3 id="privacy-17"><span class="legal-clause-num">17.</span> <span data-i18n="Changes to this policy">Changes to this policy</span></h3>
+          <p data-i18n="We may update this policy as the service changes. The effective date and version at the top always show which version applies. If a change materially affects your rights, we will provide notice in the product or by email before it takes effect."></p>
         </section>
+
+        <!-- ================================================================
+             API TERMS
+             ================================================================ -->
+        <section class="legal-section" id="api">
+          <h2><i data-lucide="terminal"></i> <span data-i18n="API terms">API terms</span></h2>
+          <p class="legal-lede" data-i18n="These terms apply to the Gatita API in addition to everything above. If they conflict with the Terms of Service, the API terms win for API use."></p>
+
+          <h3><span class="legal-clause-num">1.</span> <span data-i18n="Authentication">Authentication</span></h3>
+          <p data-i18n="Every request carries a bearer key created in the dashboard. Full key values are shown exactly once and are stored only as a hash, so a lost key cannot be recovered. If you lose a key, you must revoke it and create another. Keys are confidential: keep them out of public repositories, client-side code, logs, screenshots, and support messages."></p>
+
+          <h3><span class="legal-clause-num">2.</span> <span data-i18n="Model availability">Model availability</span></h3>
+          <p data-i18n-html="The models your key can use are whatever &lt;code&gt;GET /v1/models&lt;/code&gt; returns for it. Availability depends on your plan, can change without notice, and is never guaranteed by a list published in the docs. Requesting a model your key does not have returns an error, not a fallback."></p>
+
+          <h3><span class="legal-clause-num">3.</span> <span data-i18n="Limits">Limits</span></h3>
+          <p data-i18n="Per-minute and per-day request limits, per-request token caps, and Deep research limits are enforced per key and per account, and are reported live in the dashboard. Repeated 429 responses mean you are over a limit: back off rather than retrying immediately."></p>
+
+          <h3><span class="legal-clause-num">4.</span> <span data-i18n="Data sent through the API">Data sent through the API</span></h3>
+          <p data-i18n="Prompts, files, and context sent to API endpoints are handled under exactly the same commitments as Gatita Ask: no training, no sale, no product-enhancement use. If you send personal data through the API, you are the controller for it and you are responsible for having a lawful basis to do so."></p>
+
+          <h3><span class="legal-clause-num">5.</span> <span data-i18n="Fair use">Fair use</span></h3>
+          <p data-i18n="Do not resell raw API access, circumvent rate limits, share one key across unrelated parties, or use the API to build a competing hosted inference product without written permission. Strikes apply to keys as well as to chats: on the free tier an active strike blocks API access, while Plus and Pro keys keep access with strike bypass enabled."></p>
+
+          <div class="legal-callout neutral">
+            <strong data-i18n="Availability"></strong>
+            The API has no published uptime guarantee while in beta. Build with
+            retries and backoff, and do not make it a single point of failure for
+            anything critical.
+          </div>
+        </section>
+
+        <!-- ================================================================
+             CONTACT
+             ================================================================ -->
+        <section class="legal-section" id="contact">
+          <h2><i data-lucide="mail"></i> <span data-i18n="Contact">Contact</span></h2>
+          <p data-i18n="For privacy, security, account, data, or legal questions, including access and deletion requests, reach us at:"></p>
+          <div class="legal-contact">
+            <a class="legal-contact-code" href="mailto:contact@gatita.tech" data-i18n="contact@gatita.tech"></a
+            >
+          </div>
+          <p data-i18n="For security-related issues, please submit a report through the contact email. Security reports are welcome and appreciated. Please include reproduction steps and give us reasonable time to fix issues before public disclosure."></p>
+          <div class="legal-callout neutral">
+            <strong data-i18n="About this document"></strong>
+            This page is written to describe Gatita accurately and to make our
+            commitments checkable. Formal compliance depends on your jurisdiction
+            and use case, so have qualified counsel review it before relying on it
+            in a compliance-sensitive context.
+          </div>
+
+          <div class="legal-foot">
+            <span data-i18n="Effective October 5, 2026"></span>
+          </div>
+        </section>
+      </section>
     </main>
+
+    <div class="sidebar-scrim hidden" id="pageScrim" aria-hidden="true"></div>
+
+    <script src="vendor/lucide.js?v=1.52.0"></script>
+    <script src="icons.js?v=20261005c"></script>
+    <script src="loader.js?v=20261006a"></script>
     <script>
       (function () {
-        var preloader = document.getElementById("preloader");
-        if (!preloader) return;
-        var hide = function () {
-          document.body.classList.add("app-ready");
-          preloader.classList.add("preloader-done");
+        "use strict";
+
+        var icons = function () {
+          if (window.iconRefresh) window.iconRefresh();
+            else if (window.lucide?.createIcons) window.lucide.createIcons();
         };
-        var t0 = performance.now();
-        var onLoad = function () {
-          var wait = Math.max(0, 750 - (performance.now() - t0));
-          window.setTimeout(hide, wait);
+
+        /* ---------- mobile sidebar ---------- */
+        var scrim = document.getElementById("pageScrim");
+        var toggle = document.getElementById("sidebarToggle");
+        var closeSidebar = function () {
+          if (window.innerWidth > 980) return;
+          document.body.classList.add("sidebar-collapsed");
+          scrim?.classList.add("hidden");
+          scrim?.classList.remove("show");
         };
-        if (document.readyState === "complete") onLoad();
-        else window.addEventListener("load", onLoad);
-        window.setTimeout(hide, 3500);
+        toggle?.addEventListener("click", function () {
+          var collapsed = document.body.classList.toggle("sidebar-collapsed");
+          if (collapsed) {
+            scrim?.classList.add("hidden");
+            scrim?.classList.remove("show");
+          } else {
+            scrim?.classList.remove("hidden");
+            scrim?.classList.add("show");
+          }
+        });
+        scrim?.addEventListener("click", closeSidebar);
+        window.addEventListener("resize", closeSidebar);
+        closeSidebar();
+
+        /* ---------- scrollspy ---------- */
+        var links = Array.prototype.slice.call(
+          document.querySelectorAll("#legalNav a[href^='#']"),
+        );
+        var targets = links
+          .map(function (link) {
+            return document.querySelector(link.getAttribute("href"));
+          })
+          .filter(Boolean);
+
+        var setActive = function (id) {
+          links.forEach(function (link) {
+            link.classList.toggle(
+              "active",
+              link.getAttribute("href") === "#" + id,
+            );
+          });
+        };
+
+        if ("IntersectionObserver" in window && targets.length) {
+          var spy = new IntersectionObserver(
+            function (entries) {
+              entries.forEach(function (entry) {
+                if (entry.isIntersecting) setActive(entry.target.id);
+              });
+            },
+            { rootMargin: "-15% 0px -78% 0px" },
+          );
+          targets.forEach(function (target) {
+            spy.observe(target);
+          });
+        }
+
+        links.forEach(function (link) {
+          link.addEventListener("click", function () {
+            setActive(link.getAttribute("href").slice(1));
+            closeSidebar();
+          });
+        });
+
+        icons();
       })();
     </script>
-</body>
+  </body>
 </html>

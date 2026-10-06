@@ -1,0 +1,11 @@
+{
+  "name": "gatita-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Gatita Ask chat site, API dashboard, and API docs.",
+  "scripts": {
+    "dev": "node serve.js",
+    "start": "node serve.js",
+    "check": "node --check app.js && node --check api.js && node --check i18n.js && node --check icons.js && node --check loader.js && node --check serve.js && node --check tools/check-icons.js && node --check tools/smoke.js && node tools/check-icons.js"
+  }
+}

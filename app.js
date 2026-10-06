@@ -21,10 +21,16 @@ const API_BASE =
   window.GATITA_ASK_API_BASE ||
   window[LEGACY_API_BASE_KEY] ||
   API_BASE_OVERRIDE ||
-  "https://api.clankr.tech/ask-api";
-const LEGAL_VERSION = "2026-05-23";
+  "https://api.gatita.tech";
+// Bump when the Terms/Privacy wording changes so returning users re-accept.
+const LEGAL_VERSION = "2026-10-05";
 const STREAM_RENDER_INTERVAL_MS = 80;
 const STREAM_MARKDOWN_INTERVAL_MS = 120;
+/* Reveal pacing. The delay shrinks as the model streams faster, so a quick
+   answer never lags behind the text it already received. */
+const REVEAL_MIN_DELAY_MS = 6;
+const REVEAL_MAX_DELAY_MS = 64;
+const REVEAL_TARGET_CHARS_PER_SEC = 190;
 const NOTIFICATION_PROMPT_INTERVAL_MS = 30 * 60 * 1000;
 const BROWSER_CHECK_YIELD_EVERY = 150;
 const COMPACT_SHELL_QUERY = "(max-width: 980px)";
@@ -37,6 +43,11 @@ const VOICE_CAPTURE_MIN_MS = 650;
 const VOICE_CAPTURE_MAX_MS = 13000;
 const VOICE_CAPTURE_RMS_THRESHOLD = 0.014;
 // Defensively strip any legacy notebook tags from model output.
+// Math we can hand to MathJax. Used both to protect delimiters from the word
+// wrapper and to decide when a typeset pass is worth running.
+const MATH_RE = /(\$\$[\s\S]+?\$\$|\\\([\s\S]+?\\\)|\\\[[\s\S]+?\\\]|\$[^$\n]{1,400}\$)/;
+const containsMath = (value) => MATH_RE.test(String(value || ""));
+
 const NOTEBOOK_STRIP_RE =
   /<gatita-notebook\b[^>]*>[\s\S]*?(?:<\/gatita-notebook>|$)|<\/gatita-notebook>/gi;
 const PROMPT_TEMPLATES = {
@@ -113,14 +124,25 @@ const els = {
   blockedOverlay: document.getElementById("blockedOverlay"),
   newChatButton: document.getElementById("newChatButton"),
   settingsButton: document.getElementById("settingsButton"),
-  settingsWrap: document.querySelector(".settings-wrap"),
-  settingsMenu: document.getElementById("settingsMenu"),
-  settingsMenuCloseButton: document.getElementById("settingsMenuCloseButton"),
-  settingsAccountButton: document.getElementById("settingsAccountButton"),
-  settingsModelName: document.getElementById("settingsModelName"),
-  settingsSummary: document.getElementById("settingsSummary"),
+  settingsWrap: document.querySelector(".composer-container"),
+  settingsMenu: document.getElementById("pickerPanel"),
+  pickerTriggerLabel: document.getElementById("pickerTriggerLabel"),
+  toolsButton: document.getElementById("toolsButton"),
+  toolsPanel: document.getElementById("toolsPanel"),
+  apiLinkButton: document.getElementById("apiLinkButton"),
+  accountPanel: document.getElementById("accountPanel"),
+  accountAuthView: document.getElementById("accountAuthView"),
+  accountSettingsView: document.getElementById("accountSettingsView"),
+  accountPanelAvatar: document.getElementById("accountPanelAvatar"),
+  accountNav: document.querySelector(".account-nav"),
+  accountSections: document.querySelectorAll("[data-account-section]"),
+  accountChatCount: document.getElementById("accountChatCount"),
+  accountUpdatesButton: document.getElementById("accountUpdatesButton"),
+  accountClearDataButton: document.getElementById("accountClearDataButton"),
+  notificationsHint: document.getElementById("notificationsHint"),
   sidebarToggleButton: document.getElementById("sidebarToggleButton"),
   sidebarScrim: document.getElementById("sidebarScrim"),
+  tempChatButton: document.getElementById("tempChatButton"),
   voiceCallButton: document.getElementById("voiceCallButton"),
   voiceModal: document.getElementById("voiceModal"),
   voiceCloseButton: document.getElementById("voiceCloseButton"),
@@ -130,12 +152,8 @@ const els = {
   voiceSubstatus: document.getElementById("voiceSubstatus"),
   voiceTranscript: document.getElementById("voiceTranscript"),
   modelSelect: document.getElementById("modelSelect"),
-  modelSelectButton: document.getElementById("modelSelectButton"),
-  modelSelectValue: document.getElementById("modelSelectValue"),
   modelSelectMenu: document.getElementById("modelSelectMenu"),
   personalitySelect: document.getElementById("personalitySelect"),
-  personalitySelectButton: document.getElementById("personalitySelectButton"),
-  personalitySelectValue: document.getElementById("personalitySelectValue"),
   personalitySelectMenu: document.getElementById("personalitySelectMenu"),
   thinkingToggle: document.getElementById("thinkingToggle"),
   researchToggle: document.getElementById("researchToggle"),
@@ -153,8 +171,6 @@ const els = {
   usageText: document.getElementById("usageText"),
   accountName: document.getElementById("accountName"),
   accountButton: document.getElementById("accountButton"),
-  accountModal: document.getElementById("accountModal"),
-  closeAccountButton: document.getElementById("closeAccountButton"),
   accountModalName: document.getElementById("accountModalName"),
   accountModalEmail: document.getElementById("accountModalEmail"),
   accountMinuteLimit: document.getElementById("accountMinuteLimit"),
@@ -187,8 +203,6 @@ const els = {
   banSignOutButton: document.getElementById("banSignOutButton"),
   cookieBanner: document.getElementById("cookieBanner"),
   cookieAcceptButton: document.getElementById("cookieAcceptButton"),
-  authModal: document.getElementById("authModal"),
-  closeAuthButton: document.getElementById("closeAuthButton"),
   authForm: document.getElementById("authForm"),
   authEmail: document.getElementById("authEmail"),
   authDisplayName: document.getElementById("authDisplayName"),
@@ -369,7 +383,7 @@ const openActionModal = ({
       usesTextarea && maxLength ? maxLength : 524288;
 
     showWithMotion(els.actionModal);
-    iconRefresh();
+    refreshIcons();
     requestAnimationFrame(() => {
       if (usesTextarea) {
         els.actionModalTextarea.focus();
@@ -596,9 +610,11 @@ const getMessageElement = (message) => {
 };
 
 /* ---------- Word-by-word reveal ----------
-   Every message reveals word by word: each word pops up from below with a
-   spring, a blur that resolves, and a fade. Streaming messages only animate
-   the words that are new since the last paint, so nothing re-plays. */
+   Only the live response animates. Finished messages, history loads and
+   background sync render instantly, so nothing fades in while you are not
+   looking at the model writing. */
+const canAnimateWords = () =>
+  !document.hidden && !prefersReducedMotion() && !state.suppressReveal;
 const WORD_SKIP_TAGS = new Set([
   "PRE",
   "CODE",
@@ -617,6 +633,46 @@ const makeWordSpan = (token, animate, order, delay = 0) => {
   if (animate) span.style.setProperty("--delay", `${Math.max(0, delay)}ms`);
   span.textContent = token;
   return span;
+};
+
+/* Replace the reveal spans with their text. MathJax needs one contiguous run
+   of text to find $...$ delimiters, and our per-word spans would split them. */
+const unwrapWords = (root) => {
+  if (!root) return;
+  const spans = root.querySelectorAll("span.word");
+  spans.forEach((span) => {
+    const parent = span.parentNode;
+    if (!parent) return;
+    parent.replaceChild(document.createTextNode(span.textContent || ""), span);
+  });
+  root.normalize?.();
+};
+
+/* Adaptive reveal pacing: work out how fast text is arriving and pick a per
+   word delay that keeps up with it, plus catch up when we fall behind. */
+const revealPacer = {
+  lastAt: 0,
+  charsPerSecond: 0,
+  interval() {
+    const interval = 1000 / Math.max(1, this.charsPerSecond);
+    return Math.min(REVEAL_MAX_DELAY_MS, Math.max(REVEAL_MIN_DELAY_MS, interval));
+  },
+  sample(chars) {
+    const now = performance.now();
+    if (this.lastAt && now > this.lastAt) {
+      const instant = (chars * 1000) / (now - this.lastAt);
+      // Smooth it so a single fast chunk doesn't cause a visible jolt.
+      this.charsPerSecond = this.charsPerSecond
+        ? this.charsPerSecond * 0.7 + instant * 0.3
+        : instant;
+    }
+    this.lastAt = now;
+    return this.interval();
+  },
+  reset() {
+    this.lastAt = 0;
+    this.charsPerSecond = 0;
+  },
 };
 
 const wrapWordsInElement = (
@@ -643,6 +699,7 @@ const wrapWordsInElement = (
   });
   const textNodes = [];
   while (walker.nextNode()) textNodes.push(walker.currentNode);
+  const animateAll = animateFrom !== Infinity;
 
   let tokenIndex = 0;
   textNodes.forEach((node) => {
@@ -656,7 +713,7 @@ const wrapWordsInElement = (
         frag.appendChild(document.createTextNode(token));
         return;
       }
-      const animate = index >= animateFrom;
+      const animate = animateAll && index >= animateFrom;
       frag.appendChild(
         makeWordSpan(
           token,
@@ -685,16 +742,34 @@ const updateStreamingMessageContent = (message) => {
 
   if (shouldRefresh || !message._streamMarkdownSource) {
     const previousTokenCount = message._streamTokenCount || 0;
-    streamBody.innerHTML = renderMarkdown(text);
+    streamBody.innerHTML = renderMarkdown(text, { partial: true });
+    // Never split math with per-word spans; the final typeset pass needs the
+    // original contiguous text.
+    const hasMath = MATH_RE.test(text);
+    if (hasMath) {
+      message._streamTokenCount = Infinity;
+      message._streamRevealAvailableAt = 0;
+      message._streamMarkdownSource = text;
+      message._streamMarkdownAt = now;
+      message._streamMarkdownHtml = streamBody.innerHTML;
+      if (shouldStickToBottom) queueBottomLock();
+      queueMathTypeset();
+      return true;
+    }
+
+    const step = revealPacer.sample(Math.max(0, text.length - (message._streamChars || 0)));
+    message._streamChars = text.length;
+
     let nextRevealAt = Math.max(now, message._streamRevealAvailableAt || now);
     const tokenCount = wrapWordsInElement(
       streamBody,
       previousTokenCount,
       () => {
         const delay = Math.max(0, nextRevealAt - now);
-        nextRevealAt += 72;
+        nextRevealAt += step;
         return delay;
       },
+      canAnimateWords(),
     );
     message._streamTokenCount = tokenCount;
     message._streamRevealAvailableAt = nextRevealAt;
@@ -752,9 +827,14 @@ const acceptRequiredLegal = () => {
   hideWithMotion(els.legalGateModal);
   unlockConsent();
   initializeApp().catch((error) => {
-    showToast(error.message || "Ask could not load.");
     renderChats();
     renderMessages();
+    // Same sheet the splash screen would have shown, at this later point.
+    if (window.Loader) {
+      window.Loader.fail("The chat workspace could not load.", error.message);
+    } else {
+      showToast(error.message || "Ask could not load.");
+    }
   });
 };
 
@@ -763,9 +843,11 @@ const showCookieBannerIfNeeded = () => {
   showWithMotion(els.cookieBanner);
 };
 
-const iconRefresh = () => {
-  if (window.lucide?.createIcons) window.lucide.createIcons();
-};
+/* icons.js owns icon rendering (idempotent, self-healing). It is exposed as a
+   global, so there is deliberately no local iconRefresh here — but keep a
+   fallback for the day the shared kit is not on the page. */
+const refreshIcons = () =>
+  window.iconRefresh ? window.iconRefresh() : window.lucide?.createIcons?.();
 
 const loadMathJax = () =>
   new Promise((resolve) => {
@@ -783,23 +865,44 @@ const loadMathJax = () =>
     document.head.appendChild(script);
   });
 
-const queueMathTypeset = () => {
-  if (isCurrentViewStreaming()) return;
+/* Typeset maths with MathJax.
+   Two problems used to stop maths ever appearing: the pass bailed out while a
+   response was streaming, and the word-by-word spans fragmented the $...$
+   delimiters so MathJax had nothing to find. Now we unwrap those spans first
+   and we run during streaming too, debounced so it stays cheap. */
+const typesetMath = async () => {
+  try {
+    await loadMathJax();
+    const MathJax = window.MathJax;
+    if (!MathJax?.typesetPromise) return;
+
+    // Only touch nodes that actually contain maths.
+    const targets = [];
+    els.messages
+      .querySelectorAll(".markdown-body, .stream-markdown")
+      .forEach((node) => {
+        if (!containsMath(node.textContent || "")) return;
+        if (node.querySelector("mjx-container")) return;
+        targets.push(node);
+      });
+    if (targets.length === 0) return;
+
+    targets.forEach((node) => unwrapWords(node));
+    MathJax.typesetPromise(targets).catch(() => {});
+  } catch (_) {
+    // Maths is a nicety; never let it break the chat.
+  }
+};
+
+const queueMathTypeset = (delay = 180) => {
   const hasMath = state.messages.some(
     (message) =>
       message.role === "assistant" &&
-      /(\$\$|\\\(|\\\[|\$[^$\n]{1,160}\$)/.test(
-        getVisibleMessageContent(message),
-      ),
+      containsMath(getVisibleMessageContent(message)),
   );
   if (!hasMath) return;
   clearTimeout(queueMathTypeset.timer);
-  queueMathTypeset.timer = setTimeout(async () => {
-    await loadMathJax();
-    window.MathJax.typesetPromise([els.messages])
-      .then(() => {})
-      .catch(() => {});
-  }, 160);
+  queueMathTypeset.timer = setTimeout(typesetMath, delay);
 };
 
 const showToast = (message) => {
@@ -830,8 +933,8 @@ const updateNotificationUi = () => {
   if (!els.notificationsToggle) return;
   const permission = getNotificationPermission();
   const unavailable = permission === "unsupported" || permission === "denied";
-  const wrapper = els.notificationsToggle.closest(".account-toggle");
-  const helper = wrapper?.querySelector("small");
+  const wrapper = els.notificationsToggle.closest(".switch");
+  const helper = els.notificationsHint;
 
   els.notificationsToggle.checked = notificationsEnabled();
   els.notificationsToggle.disabled = unavailable;
@@ -884,7 +987,7 @@ const showNotificationPrompt = ({ force = false } = {}) => {
 
   markNotificationPrompted();
   showWithMotion(els.notificationPromptModal);
-  iconRefresh();
+  refreshIcons();
   return true;
 };
 
@@ -1142,6 +1245,29 @@ const updateAccountStatus = (status) => {
   }
 };
 
+const switchAccountTab = (tab) => {
+  const navButtons = document.querySelectorAll("[data-account-tab]");
+  const sections = els.accountSections || [];
+  let matched = false;
+  navButtons.forEach((button) => {
+    const active = button.dataset.accountTab === tab;
+    button.classList.toggle("active", active);
+    if (active) matched = true;
+  });
+  sections.forEach((section) => {
+    section.classList.toggle("active", section.dataset.accountSection === tab);
+  });
+  if (!matched) return;
+  // Every category starts at the top of the same fixed-height surface, so
+  // switching never leaves you mid-scroll in the new one.
+  sections.forEach((section) => {
+    if (section.classList.contains("active")) section.scrollTop = 0;
+  });
+  const scroller = document.querySelector(".account-sections");
+  if (scroller) scroller.scrollTop = 0;
+  refreshIcons();
+};
+
 const renderAccountWindow = () => {
   if (!els.accountModalName) return;
   const usage = state.usage || {};
@@ -1169,6 +1295,9 @@ const renderAccountWindow = () => {
       ? `Deletion scheduled for ${formatAccountDeletionTime(deletionScheduledAt)}. Sign in before then to cancel it.`
       : "";
   }
+  if (els.accountChatCount) {
+    els.accountChatCount.textContent = String(state.chats.length || 0);
+  }
   updateNotificationUi();
 };
 
@@ -1185,7 +1314,6 @@ const updateAccount = () => {
     els.accountName.textContent =
       state.user.displayName || state.user.email || "Account";
     setAvatar(state.user.email, state.user.displayName || state.user.email);
-    // els.accountButton.textContent = 'Account';
     setGuestLockedToggle(els.thinkingToggle, false);
     setGuestLockedToggle(els.researchToggle, false);
     setGuestLockedToggle(els.autoWebToggle, false);
@@ -1194,7 +1322,6 @@ const updateAccount = () => {
   } else {
     els.accountName.textContent = "Guest";
     setAvatar(null, "Guest");
-    // els.accountButton.textContent = 'Sign in';
     if (state.usage?.dailyLimit) {
       els.usageText.textContent = `${state.usage.dailyRemaining}/${state.usage.dailyLimit} guest messages left`;
     } else {
@@ -1211,6 +1338,9 @@ const updateAccount = () => {
     setGuestLockedToggle(els.deepResearchToggle, true);
     setGuestLockedToggle(els.agenticToggle, true);
   }
+  // Switch the dock between the signed-out sign-in form and settings.
+  els.accountAuthView?.classList.toggle("hidden", Boolean(state.user));
+  els.accountSettingsView?.classList.toggle("hidden", !state.user);
   renderAccountWindow();
   renderUpdates();
   updateSettingsSummary();
@@ -1229,10 +1359,10 @@ const renderSelects = () => {
   const savedAgenticChat = storageGet("agentic_chat") === "1";
 
   els.modelSelect.innerHTML = models
-    .map((model) => {
-      const toolLabel = model.nativeTools ? " · Native tools" : "";
-      return `<option value="${escapeHtml(model.id)}">${escapeHtml(model.name)}${toolLabel}</option>`;
-    })
+    .map(
+      (model) =>
+        `<option value="${escapeHtml(model.id)}">${escapeHtml(model.name)}</option>`,
+    )
     .join("");
   els.personalitySelect.innerHTML = personalities
     .map(
@@ -1255,8 +1385,8 @@ const renderSelects = () => {
   els.deepResearchToggle.checked = savedDeepResearch && Boolean(state.user);
   els.agenticToggle.checked = savedAgenticChat && Boolean(state.user);
   updateNativeToolControls();
-  renderCustomSelect("model");
-  renderCustomSelect("personality");
+  renderPickerOptions("model");
+  renderPickerOptions("personality");
   updateSettingsSummary();
 };
 
@@ -1280,34 +1410,46 @@ const updateNativeToolControls = () => {
 };
 
 const updateSettingsSummary = () => {
-  if (!els.settingsSummary) return;
   const modelName =
-    els.modelSelect.selectedOptions?.[0]?.textContent || "Model";
-  const selectedModel = (state.config?.models || []).find(
-    (model) => model.id === els.modelSelect.value,
-  );
+    els.modelSelect?.selectedOptions?.[0]?.textContent || "Model";
   const extras = [
-    selectedModel?.nativeTools ? "Native tools" : "",
-
-    els.thinkingToggle.checked ? "Thinking" : "",
-    els.deepResearchToggle.checked
+    els.thinkingToggle?.checked ? "Thinking" : "",
+    els.deepResearchToggle?.checked
       ? "Deep research"
-      : els.researchToggle.checked
+      : els.researchToggle?.checked
         ? "Research"
         : "",
-    els.agenticToggle.checked ? "Gatita Agent" : "",
+    els.agenticToggle?.checked ? "Agent" : "",
   ].filter(Boolean);
-  if (els.settingsModelName) els.settingsModelName.textContent = modelName;
 
-  const summary = extras.join(" · ");
-  els.settingsSummary.textContent = summary;
+  // The compact chip shows only the model; active capabilities light up the
+  // sliders button instead of crowding a single line of text.
+  if (els.pickerTriggerLabel) {
+    els.pickerTriggerLabel.textContent = modelName;
+  }
   if (els.settingsButton) {
+    const summary = extras.length ? ` · ${extras.join(" · ")}` : "";
     els.settingsButton.setAttribute(
       "aria-label",
-      `Ask settings: ${modelName}${summary ? `, ${summary}` : ""}`,
+      `Model: ${modelName}${summary ? `, ${extras.join(", ")}` : ""}`,
     );
-    els.settingsButton.title = "Ask settings";
+    els.settingsButton.title = extras.length
+      ? `${modelName} — ${extras.join(", ")}`
+      : modelName;
   }
+  els.toolsButton?.classList.toggle("is-on", extras.length > 0);
+  els.toolsButton?.setAttribute(
+    "aria-label",
+    extras.length ? `Capabilities: ${extras.join(", ")}` : "Capabilities",
+  );
+};
+
+/* The topbar temporary-chat control only lights up while temporary mode is on. */
+const syncTempButton = () => {
+  const btn = els.tempChatButton;
+  if (!btn) return;
+  btn.classList.toggle("is-active", !!state.temporaryMode);
+  btn.setAttribute("aria-pressed", state.temporaryMode ? "true" : "false");
 };
 
 const renderChats = () => {
@@ -1317,30 +1459,6 @@ const renderChats = () => {
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(chat);
   }
-
-  const temporaryItem = `
-        <article class="chat-row ${state.temporaryMode ? "active" : ""}">
-            <button class="chat-item-main" type="button" data-temporary-chat="1">
-                <span class="chat-title-row">
-                    <span class="chat-title">Temporary chat</span>
-                    <span class="chat-count"><i data-lucide="message-square"></i>${state.temporaryMessages.length || 0}</span>
-                </span>
-                <span class="chat-preview">Not saved</span>
-            </button>
-        </article>
-    `;
-
-  const newItem = `
-        <article class="chat-row ${!state.activeChatId && !state.activeSharedToken && !state.temporaryMode ? "active" : ""}">
-            <button class="chat-item-main" type="button" data-new-chat="1">
-                <span class="chat-title-row">
-                    <span class="chat-title">${window.i18n ? window.i18n("chat.newChat") : "New chat"}</span>
-                    <span class="chat-count"><i data-lucide="message-square"></i>0</span>
-                </span>
-                <span class="chat-preview">${window.i18n ? window.i18n("chat.ready") : "Ready"}</span>
-            </button>
-        </article>
-    `;
 
   const groupHtml = [...groups.entries()]
     .map(
@@ -1374,8 +1492,9 @@ const renderChats = () => {
     )
     .join("");
 
-  els.chatList.innerHTML = `${temporaryItem}${newItem}${groupHtml || '<p class="empty-list">No saved chats found.</p>'}`;
-  iconRefresh();
+  els.chatList.innerHTML = groupHtml || '<p class="empty-list">No saved chats found.</p>';
+  syncTempButton();
+  refreshIcons();
 };
 
 const escapeHtml = (value) =>
@@ -1386,76 +1505,64 @@ const escapeHtml = (value) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 
-const getCustomSelectParts = (kind) => {
-  if (kind === "model") {
-    return {
-      select: els.modelSelect,
-      button: els.modelSelectButton,
-      value: els.modelSelectValue,
-      menu: els.modelSelectMenu,
-    };
+/* ---------- Model / personality picker ----------
+   One trigger opens one panel. Model and personality options live in
+   separate listbox groups, capability toggles sit below them, and the
+   trigger label shows the active model plus a dot-separated summary. */
+const getModelMeta = (modelId) =>
+  (state.config?.models || []).find((model) => model.id === modelId) || null;
+
+const renderPickerOptions = (kind) => {
+  const isModel = kind === "model";
+  const select = isModel ? els.modelSelect : els.personalitySelect;
+  const menu = isModel ? els.modelSelectMenu : els.personalitySelectMenu;
+  if (!select || !menu) return;
+
+  const items = Array.from(select.options || []);
+  if (items.length === 0) {
+    menu.innerHTML = `<p class="empty-list">${
+      isModel ? "No models available." : "No personalities available."
+    }</p>`;
+    return;
   }
-  return {
-    select: els.personalitySelect,
-    button: els.personalitySelectButton,
-    value: els.personalitySelectValue,
-    menu: els.personalitySelectMenu,
-  };
-};
 
-const closeCustomSelects = () => {
-  state.openCustomSelect = "";
-  ["model", "personality"].forEach((kind) => {
-    const parts = getCustomSelectParts(kind);
-    parts.menu?.classList.add("hidden");
-    parts.button?.setAttribute("aria-expanded", "false");
-  });
-};
-
-const renderCustomSelect = (kind) => {
-  const { select, button, value, menu } = getCustomSelectParts(kind);
-  if (!select || !button || !value || !menu) return;
-
-  const options = Array.from(select.options || []);
-  const selected =
-    options.find((option) => option.value === select.value) || options[0];
-  value.textContent =
-    selected?.textContent || (kind === "model" ? "Model" : "Personality");
-  button.disabled = options.length === 0;
-  button.setAttribute(
-    "aria-expanded",
-    state.openCustomSelect === kind ? "true" : "false",
-  );
-
-  menu.innerHTML = options
+  menu.innerHTML = items
     .map((option) => {
       const active = option.value === select.value;
+      const meta = isModel ? getModelMeta(option.value) : null;
+      const tag =
+        isModel && meta?.nativeTools
+          ? '<span class="picker-option-tag">tools</span>'
+          : "";
       return `
-            <button class="custom-select-option ${active ? "active" : ""}" type="button" role="option" aria-selected="${active ? "true" : "false"}" data-custom-select-value="${escapeHtml(option.value)}">
-                <span>${escapeHtml(option.textContent)}</span>
-                ${active ? '<i data-lucide="check"></i>' : ""}
-            </button>
-        `;
+        <button class="picker-option ${active ? "active" : ""}" type="button" role="option"
+                aria-selected="${active ? "true" : "false"}"
+                data-custom-select-value="${escapeHtml(option.value)}">
+          <span class="picker-option-label">${escapeHtml(option.textContent)}</span>
+          ${tag}
+          <i data-lucide="check" class="picker-check"></i>
+        </button>`;
     })
     .join("");
-  menu.classList.toggle("hidden", state.openCustomSelect !== kind);
-  iconRefresh();
-};
-
-const toggleCustomSelect = (kind) => {
-  state.openCustomSelect = state.openCustomSelect === kind ? "" : kind;
-  renderCustomSelect("model");
-  renderCustomSelect("personality");
 };
 
 const chooseCustomSelectValue = (kind, nextValue) => {
-  const { select } = getCustomSelectParts(kind);
+  const select = kind === "model" ? els.modelSelect : els.personalitySelect;
   if (!select) return;
   if (select.value !== nextValue) {
     select.value = nextValue;
     select.dispatchEvent(new Event("change", { bubbles: true }));
   }
-  closeCustomSelects();
+  closeAllPopovers();
+};
+
+const bindCustomSelect = (kind) => {
+  const menu = kind === "model" ? els.modelSelectMenu : els.personalitySelectMenu;
+  menu?.addEventListener("click", (event) => {
+    const option = event.target.closest("[data-custom-select-value]");
+    if (!option) return;
+    chooseCustomSelectValue(kind, option.dataset.customSelectValue || "");
+  });
 };
 
 const isSettingsMenuOpen = () =>
@@ -1465,51 +1572,83 @@ const isSettingsMenuOpen = () =>
     !els.settingsMenu.classList.contains("is-closing"),
   );
 
-const shouldPortalSettingsMenu = () =>
-  window.matchMedia?.(COMPACT_SHELL_QUERY)?.matches ||
-  window.innerWidth <= COMPACT_SHELL_WIDTH;
+/* Popovers are always portalled to <body> and positioned from their trigger so
+   they can overlap the composer cleanly on both desktop and mobile. */
+const positionPopover = (panel, trigger) => {
+  if (!panel || !trigger) return;
+  if (panel.parentElement !== document.body) document.body.appendChild(panel);
 
-const syncSettingsMenuPortal = () => {
-  if (!els.settingsMenu || !els.settingsWrap) return;
-  const shouldPortal = shouldPortalSettingsMenu();
-  els.settingsMenu.classList.toggle("settings-menu-portal", shouldPortal);
-  if (shouldPortal && els.settingsMenu.parentElement !== document.body) {
-    document.body.appendChild(els.settingsMenu);
-    return;
+  // Measure at natural size first, then clamp into the viewport.
+  panel.style.maxHeight = "";
+  const rect = trigger.getBoundingClientRect();
+  const width = panel.offsetWidth || 240;
+  const height = panel.offsetHeight || 200;
+  const gap = 10;
+  const margin = 12;
+
+  const left = Math.max(
+    margin,
+    Math.min(rect.right - width, window.innerWidth - width - margin),
+  );
+  let top = rect.top - height - gap;
+  if (top < margin) {
+    top = Math.min(rect.bottom + gap, window.innerHeight - height - margin);
   }
-  if (!shouldPortal && els.settingsMenu.parentElement !== els.settingsWrap) {
-    els.settingsWrap.appendChild(els.settingsMenu);
-  }
+  top = Math.max(margin, top);
+
+  panel.style.setProperty("--picker-x", `${Math.round(left)}px`);
+  panel.style.setProperty("--picker-y", `${Math.round(top)}px`);
+  panel.style.maxHeight = `${Math.round(
+    Math.min(window.innerHeight - top - margin, 420),
+  )}px`;
+};
+
+const openPopover = (panel, trigger) => {
+  closeAllPopovers();
+  if (!panel) return;
+  // Measure while still invisible so the popover never flashes at 0,0.
+  panel.style.visibility = "hidden";
+  panel.classList.remove("hidden", "is-closing");
+  positionPopover(panel, trigger);
+  panel.style.visibility = "";
+  trigger?.setAttribute("aria-expanded", "true");
+};
+
+const closeAllPopovers = () => {
+  [
+    [els.settingsMenu, els.settingsButton],
+    [els.toolsPanel, els.toolsButton],
+  ].forEach(([panel, trigger]) => {
+    if (!panel) return;
+    hideWithMotion(panel);
+    trigger?.setAttribute("aria-expanded", "false");
+  });
 };
 
 const openSettingsMenu = () => {
-  syncSettingsMenuPortal();
-  showWithMotion(els.settingsMenu);
-  els.settingsButton.setAttribute("aria-expanded", "true");
-};
-
-const closeSettingsMenu = () => {
-  hideWithMotion(els.settingsMenu);
-  els.settingsButton.setAttribute("aria-expanded", "false");
-  closeCustomSelects();
+  renderPickerOptions("model");
+  renderPickerOptions("personality");
+  openPopover(els.settingsMenu, els.settingsButton);
 };
 
 const toggleSettingsMenu = () => {
-  if (isSettingsMenuOpen()) {
-    closeSettingsMenu();
-  } else {
-    openSettingsMenu();
-  }
+  if (isSettingsMenuOpen()) closeAllPopovers();
+  else openSettingsMenu();
 };
 
-const bindCustomSelect = (kind) => {
-  const { button, menu } = getCustomSelectParts(kind);
-  button?.addEventListener("click", () => toggleCustomSelect(kind));
-  menu?.addEventListener("click", (event) => {
-    const option = event.target.closest("[data-custom-select-value]");
-    if (!option) return;
-    chooseCustomSelectValue(kind, option.dataset.customSelectValue || "");
-  });
+const isToolsPanelOpen = () =>
+  Boolean(
+    els.toolsPanel &&
+    !els.toolsPanel.classList.contains("hidden") &&
+    !els.toolsPanel.classList.contains("is-closing"),
+  );
+
+const toggleToolsPanel = () => {
+  if (isToolsPanelOpen()) {
+    closeAllPopovers();
+    return;
+  }
+  openPopover(els.toolsPanel, els.toolsButton);
 };
 
 const stripNotebookBlocks = (value) =>
@@ -1654,8 +1793,10 @@ const renderInlineMarkdown = (value) => {
   return text;
 };
 
+// GFM only needs one dash in the separator, so `|-|-|` counts too. A bare
+// `---` line can never match because a pipe group is required.
 const isTableSeparator = (line) =>
-  /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+  /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/.test(line);
 
 const parseTableRow = (line) => {
   const cleaned = line.trim().replace(/^\|/, "").replace(/\|$/, "");
@@ -1687,8 +1828,23 @@ const normalizeCodeLanguage = (value) => {
   return (aliases[raw] || raw).replace(/[^\w-]/g, "");
 };
 
-const renderMarkdown = (value) => {
-  const source = String(value || "").replace(/\r\n/g, "\n");
+/* While text is still arriving the markdown is often half-typed: an unclosed
+   code fence, a bold marker with nothing after it, or a dangling table pipe.
+   Rendering that raw looks broken, so close the obvious ones for display only.
+   The stored content is never modified, so the final render is always exact. */
+const stabilizePartialMarkdown = (text) => {
+  let out = text;
+  // An odd number of triple-backtick fences means one is still open.
+  const fences = out.match(/^```[a-zA-Z0-9_+-]*$/gm);
+  if (fences && fences.length % 2 === 1) out += "\n```\n";
+  // Unclosed inline code.
+  if ((out.match(/(?<!`)`(?!`)/g) || []).length % 2 === 1) out += "`";
+  return out;
+};
+
+const renderMarkdown = (value, { partial = false } = {}) => {
+  const raw = String(value || "").replace(/\r\n/g, "\n");
+  const source = partial ? stabilizePartialMarkdown(raw) : raw;
   const codeBlocks = [];
   const protectedSource = source.replace(
     /```([^\n`]*)?\n?([\s\S]*?)```/g,
@@ -2045,6 +2201,36 @@ const renderRawStreamPanel = (message) => {
     `;
 };
 
+/* Long user prompts collapse to a short preview. Clicking the bubble or the
+   "Show more" control expands it; the expanded state is remembered per message
+   so re-renders (streaming, sync, navigation) do not snap it shut again. */
+const PROMPT_PREVIEW_CHARS = 220;
+const expandedPrompts = new Set();
+
+const renderUserPrompt = (content, renderKey) => {
+  const text = String(content || "");
+  const expanded = expandedPrompts.has(renderKey);
+  const clampable = text.length > PROMPT_PREVIEW_CHARS;
+  const clamped = clampable && !expanded;
+  const body = clamped
+    ? `${escapeHtml(text.slice(0, PROMPT_PREVIEW_CHARS).trimEnd())}…`
+    : escapeHtml(text);
+  const text_html = `<span class="prompt-text ${clamped ? "is-clamped" : ""}">${body}</span>`;
+  const toggle = clampable
+    ? `<button class="prompt-expand" type="button" data-prompt-toggle="${escapeHtml(renderKey)}" aria-expanded="${expanded ? "true" : "false"}">
+        <i data-lucide="chevron-down"></i>
+        <span>${expanded ? "Show less" : "Show more"}</span>
+      </button>`
+    : "";
+  return { textHtml: text_html, toggleHtml: toggle };
+};
+
+const togglePromptExpanded = (renderKey) => {
+  if (expandedPrompts.has(renderKey)) expandedPrompts.delete(renderKey);
+  else expandedPrompts.add(renderKey);
+  renderMessages();
+};
+
 const renderQueueIndicator = (message) => {
   if (!message?.queueing) return "";
   return `
@@ -2067,26 +2253,21 @@ const renderMessages = () => {
 
   els.messages.classList.toggle("streaming-render", viewStreaming);
   els.messageScroll.classList.toggle("streaming-scroll", viewStreaming);
-  const now = performance.now();
   const seenKeys =
     renderMessages.seenKeys || (renderMessages.seenKeys = new Set());
-  const animatingKeys =
-    renderMessages.animatingKeys || (renderMessages.animatingKeys = new Map());
-  for (const [key, until] of animatingKeys) {
-    if (until < now) animatingKeys.delete(key);
-  }
   const lastIndex = state.messages.length - 1;
+  // Word reveals belong to the live response only. Old history, background
+  // sync and re-renders after switching chats must never replay an animation.
+  const revealAllowed = canAnimateWords();
   els.messages.innerHTML = state.messages
     .map((message, index) => {
       const renderKey = getMessageRenderKey(message, index);
-      const isNew = !seenKeys.has(renderKey);
-      if (isNew) {
-        seenKeys.add(renderKey);
-        // Only animate the newest messages so loading a long chat stays calm.
-        if (index >= lastIndex - 3) animatingKeys.set(renderKey, now + 900);
-      }
-      const entering = isNew || animatingKeys.has(renderKey);
-      const entryClass = entering && !viewStreaming ? " entering" : "";
+      seenKeys.add(renderKey);
+      // Reveal styling belongs to the live response only.
+      const entryClass =
+        revealAllowed && message.streaming === true && !viewStreaming
+          ? " entering"
+          : "";
 
       if (message.type === "policy") {
         return `
@@ -2118,12 +2299,15 @@ const renderMessages = () => {
           ? `<div class="file-chip-row">${message.attachments.map((file) => `<span class="file-chip">${escapeHtml(file.name || "file")}</span>`).join("")}</div>`
           : "";
       const visibleContent = getVisibleMessageContent(message);
-      const body =
-        message.role === "assistant"
-          ? message.streaming
-            ? `<div class="markdown-body stream-markdown">${message._streamMarkdownHtml || ""}</div>`
-            : `<div class="markdown-body">${getMarkdownHtml(message)}</div>`
-          : escapeHtml(visibleContent);
+      const prompt =
+        message.role === "user"
+          ? renderUserPrompt(visibleContent, renderKey)
+          : null;
+      const body = prompt
+        ? `${prompt.textHtml}${prompt.toggleHtml}`
+        : message.streaming
+          ? `<div class="markdown-body stream-markdown">${message._streamMarkdownHtml || ""}</div>`
+          : `<div class="markdown-body">${getMarkdownHtml(message)}</div>`;
       const sources =
         message.role === "assistant" ? renderSources(message.sources) : "";
       const activity =
@@ -2170,22 +2354,9 @@ const renderMessages = () => {
       if (streamingMessage) updateStreamingMessageContent(streamingMessage);
       return;
     }
-    // Reveal finished messages word by word.
-    els.messages.querySelectorAll(".message.entering").forEach((article) => {
-      const renderKey = article.dataset.renderKey;
-      const message = state.messages.find(
-        (item, index) => getMessageRenderKey(item, index) === renderKey,
-      );
-      if (!message) return;
-      const target =
-        message.role === "assistant"
-          ? article.querySelector(".markdown-body")
-          : article.querySelector(".bubble");
-      if (target) wrapWordsInElement(target, 0);
-    });
     highlightCodeBlocks(els.messages);
     queueMathTypeset();
-    iconRefresh();
+    refreshIcons();
   });
 };
 
@@ -2218,7 +2389,6 @@ const renderUpdates = () => {
         <article class="update-card">
             <header>
                 <div>
-                    <span class="mode-label">Update</span>
                     <h3>${escapeHtml(item.title || "Update")}</h3>
                 </div>
                 <time datetime="${new Date(Number(item.publishedAt || Date.now())).toISOString()}">${escapeHtml(formatUpdateTime(item.publishedAt))}</time>
@@ -2230,7 +2400,7 @@ const renderUpdates = () => {
         .join("")
     : '<p class="empty-list">No updates yet.</p>';
   highlightCodeBlocks(els.updatesList);
-  iconRefresh();
+  refreshIcons();
   if (
     state.updates.some((item) =>
       /(\$\$|\\\(|\\\[|\$[^$\n]{1,160}\$)/.test(item.content || ""),
@@ -3223,6 +3393,14 @@ const sendMessage = async (options = {}) => {
         streaming: false,
         queueing: false,
       });
+      // Rebuild markdown from the final text: no reveal spans, no partial-markdown
+      // repairs, no maths that has not been typeset yet.
+      assistantDraft._streamMarkdownHtml = null;
+      assistantDraft._streamMarkdownSource = null;
+      assistantDraft._streamTokenCount = 0;
+      assistantDraft._streamChars = 0;
+      assistantDraft._markdownSource = null;
+      assistantDraft._markdownHtml = null;
       assistantDraft.activity.thinking = [];
       assistantDraft.activity.research = [];
       assistantDraft.activity.sources = [];
@@ -3283,29 +3461,49 @@ const sendMessage = async (options = {}) => {
     state.activeStreams.delete(streamTargetKey(target));
     refreshBusyState();
     els.messages.classList.toggle("streaming-render", isCurrentViewStreaming());
+    // Hand the finished message a clean markdown render with no reveal spans
+    // left in it, then typeset any maths it contains.
+    resetBrowserCheck("message");
+    revealPacer.reset();
+    state.messages.forEach((message) => {
+      if (message.role === "assistant" && message.streaming) message.streaming = false;
+      if (message.role === "assistant") {
+        message._markdownSource = null;
+        message._markdownHtml = null;
+        message._streamChars = 0;
+      }
+    });
     renderStreamTarget(target);
-    queueMathTypeset();
+    queueMathTypeset(60);
   }
 };
 
-const openAuthModal = () => {
-  showWithMotion(els.authModal);
+/* The account dock doubles as the auth surface and the settings surface, so
+   there is no separate account or auth modal to open and close. */
+const isAccountPanelOpen = () =>
+  Boolean(
+    els.accountPanel &&
+    !els.accountPanel.classList.contains("hidden") &&
+    !els.accountPanel.classList.contains("is-closing"),
+  );
+
+const openAccountPanel = () => {
   clearBrowserCheckStatus("auth");
-  els.authEmail.focus();
-};
-
-const closeAuthModal = () => {
-  hideWithMotion(els.authModal);
-  els.authError.textContent = "";
-};
-
-const openAccountModal = () => {
   renderAccountWindow();
-  showWithMotion(els.accountModal);
+  showWithMotion(els.accountPanel);
+  els.accountButton?.setAttribute("aria-expanded", "true");
+  const focusTarget = state.user ? null : els.authEmail;
+  requestAnimationFrame(() => focusTarget?.focus());
 };
 
-const closeAccountModal = () => {
-  hideWithMotion(els.accountModal);
+const closeAccountPanel = () => {
+  hideWithMotion(els.accountPanel);
+  els.accountButton?.setAttribute("aria-expanded", "false");
+};
+
+const toggleAccountPanel = () => {
+  if (isAccountPanelOpen()) closeAccountPanel();
+  else openAccountPanel();
 };
 
 const getSpeechRecognitionConstructor = () =>
@@ -3375,12 +3573,17 @@ const renderVoiceTranscript = () => {
 
 const updateVoiceUi = () => {
   const active = state.voice.active;
-  const modal = els.voiceModal;
-  modal?.classList.toggle("listening", state.voice.listening);
-  modal?.classList.toggle("thinking", state.voice.thinking);
-  modal?.classList.toggle("speaking", state.voice.speaking);
-  modal?.classList.toggle("muted", state.voice.muted);
-  modal?.classList.toggle("transcribing", state.voice.captureBusy);
+  // State classes ride on the sheet itself so the animated ring can react.
+  const sheet = document.getElementById("voiceSheet") || els.voiceModal;
+  [
+    ["listening", state.voice.listening],
+    ["thinking", state.voice.thinking],
+    ["speaking", state.voice.speaking],
+    ["muted", state.voice.muted],
+    ["transcribing", state.voice.captureBusy],
+  ].forEach(([className, on]) => {
+    sheet?.classList.toggle(className, Boolean(on));
+  });
   els.voiceCallButton?.setAttribute("aria-pressed", active ? "true" : "false");
   if (els.voiceMuteButton) {
     els.voiceMuteButton.setAttribute(
@@ -3405,7 +3608,7 @@ const updateVoiceUi = () => {
   } else if (active) {
     setVoiceStatus("Ready", voiceInputLabel());
   }
-  iconRefresh();
+  refreshIcons();
 };
 
 const stopVoiceAudio = () => {
@@ -4113,7 +4316,8 @@ const submitAuth = async () => {
     updateAccountStatus(data.accountStatus || null);
     updateAccount();
     resetBrowserCheck("auth");
-    closeAuthModal();
+    els.authError.textContent = "";
+    switchAccountTab("overview");
     state.activeChatId = null;
     state.activeSharedToken = "";
     state.temporaryMode = false;
@@ -4146,7 +4350,6 @@ const resetSignedOutState = async () => {
   state.messages = [];
   storageRemove("token");
   updateAccount();
-  closeAccountModal();
   window.location.hash = newChatUrl();
   await fetchMe();
   await fetchChats();
@@ -4216,6 +4419,12 @@ els.messages.addEventListener("click", (event) => {
     editAndResend(editButton.dataset.editMessage).catch((error) =>
       showToast(error.message),
     );
+    return;
+  }
+
+  const promptToggle = event.target.closest("[data-prompt-toggle]");
+  if (promptToggle) {
+    togglePromptExpanded(promptToggle.dataset.promptToggle);
     return;
   }
 
@@ -4401,9 +4610,16 @@ els.chatList.addEventListener("pointerdown", (event) => {
   });
 });
 
-els.newChatButton.addEventListener("click", () => {
+const startFreshChat = () => {
   startNewChat();
   closeSidebarOnCompact();
+};
+
+els.newChatButton.addEventListener("click", startFreshChat);
+
+els.tempChatButton?.addEventListener("click", () => {
+  if (state.temporaryMode) startNewChat();
+  else startTemporaryChat();
 });
 
 els.modelSelect.addEventListener("change", () => {
@@ -4412,7 +4628,7 @@ els.modelSelect.addEventListener("change", () => {
     updateChat(state.activeChatId, { modelId: els.modelSelect.value }).catch(
       () => {},
     );
-  renderCustomSelect("model");
+  renderPickerOptions("model");
   updateNativeToolControls();
   updateSettingsSummary();
   renderRandomTemplates();
@@ -4424,7 +4640,7 @@ els.personalitySelect.addEventListener("change", () => {
     updateChat(state.activeChatId, {
       personality: els.personalitySelect.value,
     }).catch(() => {});
-  renderCustomSelect("personality");
+  renderPickerOptions("personality");
   updateSettingsSummary();
 });
 
@@ -4504,27 +4720,14 @@ els.settingsButton.addEventListener("click", (event) => {
   toggleSettingsMenu();
 });
 
-els.settingsMenuCloseButton?.addEventListener("click", () => {
-  closeSettingsMenu();
-  els.settingsButton?.focus();
+els.toolsButton?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleToolsPanel();
 });
 
-els.settingsAccountButton?.addEventListener("click", () => {
-  closeSettingsMenu();
-  openAccountModal();
-});
-
-els.settingsMenu.addEventListener("click", (event) => {
-  const target = event.target;
-  if (!target.closest?.(".custom-select-shell")) closeCustomSelects();
-});
-
-document.addEventListener("pointerdown", (event) => {
-  if (!isSettingsMenuOpen()) return;
-  const target = event.target;
-  if (els.settingsMenu.contains(target)) return;
-  if (els.settingsButton.contains(target)) return;
-  closeSettingsMenu();
+els.apiLinkButton?.addEventListener("click", () => {
+  closeAllPopovers();
+  window.location.href = "api.html";
 });
 
 els.sidebarToggleButton.addEventListener("click", toggleSidebar);
@@ -4576,19 +4779,28 @@ document.addEventListener(
     ) {
       closeSidebarOnCompact();
     }
-    if (!target.closest?.(".custom-select-shell")) closeCustomSelects();
     if (!target.closest?.(".chat-row")) {
       document
         .querySelectorAll(".chat-row.actions-ready")
         .forEach((row) => row.classList.remove("actions-ready"));
     }
-    if (!isSettingsMenuOpen()) return;
-    if (
-      eventIncludesElement(event, els.settingsMenu) ||
-      eventIncludesElement(event, els.settingsButton)
-    )
-      return;
-    closeSettingsMenu();
+    const insidePopover = [
+      [els.settingsMenu, els.settingsButton],
+      [els.toolsPanel, els.toolsButton],
+    ].some(
+      ([panel, trigger]) =>
+        eventIncludesElement(event, panel) ||
+        (trigger && eventIncludesElement(event, trigger)),
+    );
+    if (isSettingsMenuOpen() || isToolsPanelOpen()) {
+      if (insidePopover) return;
+      closeAllPopovers();
+    }
+    if (isAccountPanelOpen()) {
+      if (eventIncludesElement(event, els.accountPanel)) return;
+      if (eventIncludesElement(event, els.accountButton)) return;
+      closeAccountPanel();
+    }
   },
   true,
 );
@@ -4626,7 +4838,7 @@ document.addEventListener("keydown", (event) => {
   }
   if (isModifier && key === "n") {
     event.preventDefault();
-    startNewChat();
+    startFreshChat();
     return;
   }
   if (isModifier && key === "b") {
@@ -4640,34 +4852,54 @@ document.addEventListener("keydown", (event) => {
     !els.strikeModal.classList.contains("hidden")
   )
     return;
-  closeCustomSelects();
-  if (isSettingsMenuOpen()) closeSettingsMenu();
+  closeAllPopovers();
   if (!els.actionModal.classList.contains("hidden")) closeActionModal(null);
   if (!els.notificationPromptModal.classList.contains("hidden"))
     closeNotificationPrompt();
   if (!els.updatesModal.classList.contains("hidden")) closeUpdatesModal();
-  if (!els.accountModal.classList.contains("hidden")) closeAccountModal();
+  if (isAccountPanelOpen()) closeAccountPanel();
   if (!els.voiceModal.classList.contains("hidden")) closeVoiceCall();
-  if (!els.authModal.classList.contains("hidden")) closeAuthModal();
   if (isCompactViewport() && !document.body.classList.contains("sidebar-collapsed"))
     closeSidebarOnCompact();
 });
 
-els.accountButton.addEventListener("click", () => {
-  if (state.user) {
-    openAccountModal();
-  } else {
-    openAuthModal();
-  }
+els.accountButton.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleAccountPanel();
 });
 
-els.closeAuthButton.addEventListener("click", closeAuthModal);
-els.authModal.addEventListener("click", (event) => {
-  if (event.target === els.authModal) closeAuthModal();
+els.accountNav?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-account-tab]");
+  if (!button) return;
+  switchAccountTab(button.dataset.accountTab);
 });
-els.closeAccountButton.addEventListener("click", closeAccountModal);
-els.accountModal.addEventListener("click", (event) => {
-  if (event.target === els.accountModal) closeAccountModal();
+
+els.accountUpdatesButton?.addEventListener("click", () => {
+  closeAccountPanel();
+  openUpdatesModal();
+});
+
+els.accountClearDataButton?.addEventListener("click", () => {
+  openActionModal({
+    title: "Clear local browser data",
+    message:
+      "Removes drafts, preferences and the session token from this browser. Saved chats on the server are untouched.",
+    kind: "confirm",
+    confirmText: "Clear data",
+    danger: true,
+  }).then((confirmed) => {
+    if (!confirmed) return;
+    try {
+      Object.keys(localStorage)
+        .filter(
+          (key) =>
+            key.startsWith(STORAGE_PREFIX) || key.startsWith(LEGACY_STORAGE_PREFIX),
+        )
+        .forEach((key) => localStorage.removeItem(key));
+    } catch (_) {}
+    showToast("Local data cleared. Reloading…");
+    window.setTimeout(() => window.location.reload(), 700);
+  });
 });
 els.accountSignOutButton.addEventListener("click", () => {
   signOut().catch((error) => showToast(error.message));
@@ -4811,8 +5043,18 @@ els.authForm.addEventListener("submit", (event) => {
   submitAuth();
 });
 
+// Keep the topbar border in sync with scroll position for a subtle depth cue.
+els.messageScroll?.addEventListener(
+  "scroll",
+  () => {
+    const main = document.querySelector(".chat-main");
+    main?.classList.toggle("chat-is-scrolled", els.messageScroll.scrollTop > 6);
+  },
+  { passive: true },
+);
+
 window.addEventListener("load", () => {
-  iconRefresh();
+  refreshIcons();
   highlightCodeBlocks(els.messages);
 });
 window.addEventListener("hashchange", () => {
@@ -4826,7 +5068,13 @@ window.addEventListener("focus", () => {
   syncActiveChat().catch(() => {});
 });
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState !== "visible") return;
+  if (document.visibilityState !== "visible") {
+    // Anything that arrives while we're away renders without animation, so
+    // returning to the tab doesn't replay a wave of fading words.
+    state.suppressReveal = true;
+    return;
+  }
+  state.suppressReveal = false;
   updateNotificationUi();
   syncActiveChat().catch(() => {});
 });
@@ -4850,27 +5098,28 @@ const showLegalGate = () => {
   lockForConsent();
   showWithMotion(els.legalGateModal);
   els.legalAcceptButton.disabled = !els.legalAcceptCheckbox.checked;
-  iconRefresh();
+  refreshIcons();
 };
 
 window.addEventListener("resize", () => {
   clearTimeout(syncResponsiveShell.resizeTimer);
   syncResponsiveShell.resizeTimer = setTimeout(() => {
     syncResponsiveShell();
-    syncSettingsMenuPortal();
+    // Keep an open popover glued to its trigger while the window changes size.
+    if (isSettingsMenuOpen()) positionPopover(els.settingsMenu, els.settingsButton);
+    if (isToolsPanelOpen()) positionPopover(els.toolsPanel, els.toolsButton);
   }, 120);
 });
 
 const initializeApp = async () => {
   ensureGuestId();
   syncResponsiveShell();
-  syncSettingsMenuPortal();
-  iconRefresh();
+  refreshIcons();
   updateNotificationUi();
   await fetchConfig();
   await fetchMe();
   if (isLoginEntryPage() && !state.authToken) {
-    openAuthModal();
+    openAccountPanel();
   } else if (isLoginEntryPage() && state.authToken) {
     const postLoginRedirect = getPostLoginRedirect();
     if (postLoginRedirect) {
@@ -4889,36 +5138,80 @@ const initializeApp = async () => {
     return;
   }
 
-  try {
+  const boot = (async () => {
     unlockConsent();
     await initializeApp();
-  } catch (error) {
-    showToast(error.message || "Ask could not load.");
-    renderChats();
-    renderMessages();
+  })();
+
+  if (window.Loader) {
+    // The splash screen is waiting on this: the workspace is only revealed
+    // once config, session, chats, and the route have actually loaded.
+    window.Loader.critical(
+      "workspace",
+      boot.catch((error) => {
+        // Leave whatever we have on screen behind the error sheet.
+        renderChats();
+        renderMessages();
+        throw error;
+      }),
+      "The chat workspace could not load.",
+    );
+  } else {
+    boot.catch((error) => {
+      showToast(error.message || "Ask could not load.");
+      renderChats();
+      renderMessages();
+    });
   }
 })();
 
-async function setAvatar(email, displayName) {
-  const avatarEl = document.getElementById("accountAvatar");
-  if (!avatarEl) return;
-  if (!email) {
-    avatarEl.outerHTML = `<div class="account-avatar" id="accountAvatar">${(displayName || "G").charAt(0).toUpperCase()}</div>`;
+/* Avatars: a Gravatar when the account has an email, otherwise initials.
+   Both the dock trigger and the settings header are updated in place so the
+   element references stay valid. */
+const avatarInitial = (value) =>
+  String(value || "G").trim().charAt(0).toUpperCase() || "G";
+
+const paintAvatar = (element, initial, imageUrl) => {
+  if (!element) return;
+  if (imageUrl) {
+    element.outerHTML = `<img class="account-avatar" id="${element.id}" alt="" src="${escapeHtml(imageUrl)}" onerror="this.outerHTML='<div class=&quot;account-avatar&quot; id=&quot;${element.id}&quot;>${initial}</div>'" />`;
     return;
   }
-  try {
-    const msgUint8 = new TextEncoder().encode(email.trim().toLowerCase());
-    const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const hashHex = hashArray
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
+  element.outerHTML = `<div class="account-avatar" id="${element.id}">${escapeHtml(initial)}</div>`;
+};
 
-    avatarEl.outerHTML = `<img class="account-avatar" id="accountAvatar" src="https://www.gravatar.com/avatar/${hashHex}?d=404" onerror="this.outerHTML='<div class=\'account-avatar\' id=\'accountAvatar\'>${(displayName || email || "G").charAt(0).toUpperCase()}</div>'"/>`;
-  } catch (e) {
-    avatarEl.outerHTML = `<div class="account-avatar" id="accountAvatar">${(displayName || email || "G").charAt(0).toUpperCase()}</div>`;
+const setAvatar = async (email, displayName) => {
+  const targets = [
+    document.getElementById("accountAvatar"),
+    document.getElementById("accountPanelAvatar"),
+  ].filter(Boolean);
+  if (!targets.length) return;
+  const initial = avatarInitial(displayName || email);
+  let imageUrl = "";
+
+  if (email && window.crypto?.subtle && window.TextEncoder) {
+    try {
+      const hashBuffer = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(String(email).trim().toLowerCase()),
+      );
+      const hashHex = Array.from(new Uint8Array(hashBuffer))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
+      imageUrl = `https://www.gravatar.com/avatar/${hashHex}?d=404`;
+    } catch (_) {
+      imageUrl = "";
+    }
   }
-}
+
+  // Re-query in case an earlier pass replaced the node.
+  [
+    document.getElementById("accountAvatar"),
+    document.getElementById("accountPanelAvatar"),
+  ]
+    .filter(Boolean)
+    .forEach((element) => paintAvatar(element, initial, imageUrl));
+};
 
 // 3 Buttons logic
 const TRAY_ICONS = {
@@ -4978,7 +5271,7 @@ function renderRandomTemplates() {
         </button>`;
   });
   tray.innerHTML = html;
-  if (typeof iconRefresh !== "undefined" && iconRefresh) iconRefresh();
+  if (typeof refreshIcons !== "undefined" && refreshIcons) refreshIcons();
   else if (window.lucide?.createIcons) window.lucide.createIcons();
 }
 document.addEventListener("DOMContentLoaded", renderRandomTemplates);

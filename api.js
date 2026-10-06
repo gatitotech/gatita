@@ -1,1100 +1,1384 @@
-// Gatita API Dashboard Frontend
-(function() {
-    'use strict';
 
-    // API Base URL (same pattern as app.js)
-    const STORAGE_PREFIX = "gatita_ask_";
-    const LEGACY_STORAGE_PREFIX = ["cl4", "nkr_ask_"].join("");
-    const API_BASE_OVERRIDE = (() => {
-        try {
-            const fromQuery = new URLSearchParams(window.location.search).get("api");
-            if (fromQuery) {
-                localStorage.setItem(`${STORAGE_PREFIX}api_base`, fromQuery);
-                return fromQuery;
-            }
-            return (
-                localStorage.getItem(`${STORAGE_PREFIX}api_base`) ||
-                localStorage.getItem(`${LEGACY_STORAGE_PREFIX}api_base`) ||
-                ""
-            );
-        } catch (_) {
-            return "";
-        }
-    })();
-    const API_BASE =
-        window.GATITA_ASK_API_BASE ||
-        window["CL4NKR_ASK_API_BASE"] ||
-        API_BASE_OVERRIDE ||
-        "https://api.clankr.tech/ask-api";
+(function () {
+  "use strict";
 
-    const storageGet = (key) =>
-        localStorage.getItem(`${STORAGE_PREFIX}${key}`) ??
-        localStorage.getItem(`${LEGACY_STORAGE_PREFIX}${key}`) ??
-        "";
-    const storageSet = (key, value) => {
-        localStorage.setItem(`${STORAGE_PREFIX}${key}`, value);
-        localStorage.setItem(`${LEGACY_STORAGE_PREFIX}${key}`, value);
+  const STORAGE_PREFIX = "gatita_ask_";
+  const LEGACY_STORAGE_PREFIX = ["cl4", "nkr_ask_"].join("");
+  const API_BASE_OVERRIDE = (() => {
+    try {
+      const fromQuery = new URLSearchParams(window.location.search).get("api");
+      if (fromQuery) {
+        localStorage.setItem(`${STORAGE_PREFIX}api_base`, fromQuery);
+        return fromQuery;
+      }
+      return (
+        localStorage.getItem(`${STORAGE_PREFIX}api_base`) ||
+        localStorage.getItem(`${LEGACY_STORAGE_PREFIX}api_base`) ||
+        ""
+      );
+    } catch (_) {
+      return "";
+    }
+  })();
+  const API_BASE =
+    window.GATITA_ASK_API_BASE ||
+    window["CL4NKR_ASK_API_BASE"] ||
+    API_BASE_OVERRIDE ||
+    "https://api.gatita.tech";
+
+  // Public OpenAI-compatible surface used for /v1/models.
+  const PUBLIC_API_BASE =
+    window.GATITA_PUBLIC_API_BASE || "https://api.gatita.tech/v1";
+
+  const storageGet = (key) =>
+    localStorage.getItem(`${STORAGE_PREFIX}${key}`) ??
+    localStorage.getItem(`${LEGACY_STORAGE_PREFIX}${key}`) ??
+    "";
+  const storageSet = (key, value) => {
+    localStorage.setItem(`${STORAGE_PREFIX}${key}`, value);
+    localStorage.setItem(`${LEGACY_STORAGE_PREFIX}${key}`, value);
+  };
+  const storageRemove = (key) => {
+    localStorage.removeItem(`${STORAGE_PREFIX}${key}`);
+    localStorage.removeItem(`${LEGACY_STORAGE_PREFIX}${key}`);
+  };
+
+  let authToken = storageGet("token");
+  let currentUser = null;
+  let currentTier = null;
+  let keys = [];
+  let charts = {};
+  let revokeKeyId = null;
+  let chartRange = 30;
+
+  const TAB_CONFIG = {
+    overview: { title: "Overview" },
+    keys: { title: "API keys" },
+    models: { title: "Models" },
+    analytics: { title: "Analytics" },
+    usage: { title: "Usage & limits" },
+    plan: { title: "Plans" },
+    status: { title: "Status" },
+  };
+
+  /* Tier limits are read from the API whenever possible; these are the
+     fallbacks used before /tier responds. */
+  const TIER_FALLBACKS = {
+    free: {
+      id: "free",
+      name: "Free",
+      dailyRequestLimit: 200,
+      requestsPerMinute: 6,
+      maxTokensPerRequest: 4096,
+      research: false,
+      deepResearch: false,
+      agent: false,
+      strikeBypass: false,
+      sort_order: 0,
+    },
+    plus: {
+      id: "plus",
+      name: "Plus",
+      dailyRequestLimit: 2000,
+      requestsPerMinute: 30,
+      maxTokensPerRequest: 8192,
+      research: true,
+      deepResearch: true,
+      agent: true,
+      strikeBypass: true,
+      sort_order: 1,
+    },
+    pro: {
+      id: "pro",
+      name: "Pro",
+      dailyRequestLimit: 10000,
+      requestsPerMinute: 100,
+      maxTokensPerRequest: 32768,
+      research: true,
+      deepResearch: true,
+      agent: true,
+      strikeBypass: true,
+      sort_order: 2,
+    },
+  };
+
+  const PLAN_MATRIX = [
+    { label: "Requests / day", get: (t) => formatNumber(t.dailyRequestLimit) },
+    { label: "Requests / min", get: (t) => formatNumber(t.requestsPerMinute) },
+    {
+      label: "Max tokens / request",
+      get: (t) => formatNumber(t.maxTokensPerRequest),
+    },
+    {
+      label: "Research",
+      get: (t) => (t.research ? "check" : "x"),
+    },
+    {
+      label: "Deep research",
+      get: (t) => (t.deepResearch ? "check" : "x"),
+    },
+    { label: "Gatita Agent", get: (t) => (t.agent ? "check" : "x") },
+    {
+      label: "Strike bypass",
+      get: (t) => (t.strikeBypass ? "check" : "x"),
+    },
+  ];
+
+  const el = (id) => document.getElementById(id);
+  const elements = {
+    sidebarToggle: el("sidebarToggle"),
+    pageScrim: el("pageScrim"),
+    navItems: document.querySelectorAll(".page-nav-item[data-tab]"),
+    pageTitle: el("pageTitle"),
+    newKeyBtn: el("newKeyBtn"),
+    createFirstKeyBtn: el("createFirstKeyBtn"),
+    apiKeysList: el("apiKeysList"),
+    noKeysState: el("noKeysState"),
+    testKeyInput: el("testKeyInput"),
+    testKeyButton: el("testKeyButton"),
+    testKeyStatus: el("testKeyStatus"),
+    testKeyStatusText: el("testKeyStatusText"),
+    testedModelsList: el("testedModelsList"),
+    usageMeters: el("usageMeters"),
+    limitsList: el("limitsList"),
+    planCards: el("planCards"),
+    planComparisonBody: el("planComparisonBody"),
+    contactUpgradeBtn: el("contactUpgradeBtn"),
+    authGate: el("apiAuthGate"),
+    authForm: el("apiAuthForm"),
+    authEmail: el("apiAuthEmail"),
+    authPassword: el("apiAuthPassword"),
+    authError: el("apiAuthError"),
+    authSubmit: el("apiAuthSubmit"),
+    accountButton: el("accountButton"),
+    accountPanel: el("accountPanel"),
+    accountName: el("accountName"),
+    accountTier: el("accountTier"),
+    accountAvatar: el("accountAvatar"),
+    accountPanelAvatar: el("accountPanelAvatar"),
+    accountModalName: el("accountModalName"),
+    accountModalEmail: el("accountModalEmail"),
+    dockTier: el("dockTier"),
+    dockKeyCount: el("dockKeyCount"),
+    accountSignOutButton: el("accountSignOutButton"),
+    dockNewKeyButton: el("dockNewKeyButton"),
+    dockTestKeyButton: el("dockTestKeyButton"),
+    dailyBreakdownBody: el("dailyBreakdownBody"),
+    recentActivity: el("recentActivity"),
+    createKeyModal: el("createKeyModal"),
+    createKeyForm: el("createKeyForm"),
+    createKeyModalClose: el("createKeyModalClose"),
+    createKeyCancel: el("createKeyCancel"),
+    showKeyModal: el("showKeyModal"),
+    newApiKey: el("newApiKey"),
+    copyKeyBtn: el("copyKeyBtn"),
+    showKeyDone: el("showKeyDone"),
+    revokeKeyModal: el("revokeKeyModal"),
+    revokeKeyName: el("revokeKeyName"),
+    revokeKeyCancel: el("revokeKeyCancel"),
+    revokeKeyConfirm: el("revokeKeyConfirm"),
+    toast: el("toast"),
+  };
+
+  /* ---------- helpers ---------- */
+  const escapeHtml = (text) => {
+    const div = document.createElement("div");
+    div.textContent = String(text ?? "");
+    return div.innerHTML;
+  };
+
+  const icons = () => window.iconRefresh?.() ?? window.lucide?.createIcons?.();
+
+  const formatNumber = (num) => {
+    const value = Number(num || 0);
+    if (value >= 1000000) return (value / 1000000).toFixed(1) + "M";
+    if (value >= 1000) return (value / 1000).toFixed(1) + "K";
+    return String(value);
+  };
+
+  const formatDate = (value) => {
+    if (!value) return "—";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  };
+
+  const formatRelative = (value) => {
+    if (!value) return "—";
+    const then = new Date(value).getTime();
+    if (Number.isNaN(then)) return String(value);
+    const diff = then - Date.now();
+    const abs = Math.abs(diff);
+    const minute = 60 * 1000;
+    const hour = 60 * minute;
+    const day = 24 * hour;
+    if (abs < minute) return "just now";
+    if (abs < hour) return `${Math.round(abs / minute)}m`;
+    if (abs < day) return `${Math.round(abs / hour)}h`;
+    if (abs < 30 * day) return `${Math.round(abs / day)}d`;
+    return formatDate(value);
+  };
+
+  const tierConfig = () => ({
+    ...(TIER_FALLBACKS[currentTier] || TIER_FALLBACKS.free),
+    ...(stateTier || {}),
+  });
+
+  let stateTier = null;
+
+  const showToast = (message, tone = "info") => {
+    const toast = elements.toast;
+    if (!toast) return;
+    toast.textContent = message;
+    toast.style.borderColor =
+      tone === "error"
+        ? "rgba(255,107,107,.4)"
+        : tone === "success"
+          ? "rgba(62,207,142,.4)"
+          : "";
+    toast.classList.add("show");
+    clearTimeout(showToast.timer);
+    showToast.timer = setTimeout(() => toast.classList.remove("show"), 3200);
+  };
+
+  /* ---------- api ---------- */
+  async function apiFetch(path, options = {}) {
+    const headers = {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
     };
-    const storageRemove = (key) => {
-        localStorage.removeItem(`${STORAGE_PREFIX}${key}`);
-        localStorage.removeItem(`${LEGACY_STORAGE_PREFIX}${key}`);
+    if (authToken) headers.Authorization = `Bearer ${authToken}`;
+
+    const response = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers,
+      credentials: "include",
+    });
+
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(json.error || json.message || "Request failed.");
+      error.status = response.status;
+      error.data = json;
+      throw error;
+    }
+    return json;
+  }
+
+  /* The first load is what the splash screen waits on. If the API cannot be
+     reached there is nothing to show, so boot fails loudly (loader.js turns it
+     into the error sheet) instead of rendering an empty dashboard. Once boot is
+     done, refreshes go back to degrading quietly. */
+  let booting = true;
+
+  const bootFailure = (error, fallback, essential) => {
+    if (!booting) return fallback;
+    const status = error && typeof error.status === "number" ? error.status : null;
+    // Signed out is a state this page already renders (empty dashboard, gate).
+    if (status === 401 || status === 403) return fallback;
+    // No status at all means the API could not be reached; `essential` means
+    // the dashboard has nothing to show without it.
+    if (status === null || essential) throw error;
+    return fallback;
+  };
+
+  /* ---------- auth ---------- */
+  const showAuthGate = (message) => {
+    const gate = elements.authGate;
+    if (!gate) return;
+    gate.classList.remove("hidden");
+    document
+      .querySelectorAll(".api-panel, .page-topbar-actions")
+      .forEach((node) => node.classList.add("hidden"));
+    if (message && elements.authError) elements.authError.textContent = message;
+    // The settings panel only makes sense with an account, so it steps aside.
+    elements.accountPanel?.remove();
+    if (elements.accountName) elements.accountName.textContent = "Sign in";
+    if (elements.accountTier) elements.accountTier.textContent = "";
+    elements.accountButton?.setAttribute("aria-label", "Sign in to Gatita");
+  };
+
+  const submitApiAuth = async (event) => {
+    event.preventDefault();
+    if (elements.authError) elements.authError.textContent = "";
+    if (elements.authSubmit) elements.authSubmit.disabled = true;
+    try {
+      const data = await apiFetch("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({
+          email: (elements.authEmail?.value || "").trim(),
+          password: elements.authPassword?.value || "",
+          displayName: "",
+        }),
+      });
+      if (data.token) {
+        authToken = data.token;
+        storageSet("token", data.token);
+        window.location.reload();
+        return;
+      }
+      throw new Error("Sign-in did not return a session.");
+    } catch (error) {
+      if (elements.authError) {
+        elements.authError.textContent = error.message || "Could not sign in.";
+      }
+      if (elements.authSubmit) elements.authSubmit.disabled = false;
+    }
+  };
+
+  async function checkAuth() {
+    try {
+      const data = await apiFetch("/me");
+      currentUser = data.user || null;
+      currentTier = data.tier || currentTier;
+      paintAccount();
+      return true;
+    } catch (error) {
+      if (error.status === 401) {
+        authToken = "";
+        storageRemove("token");
+        showAuthGate();
+        return false;
+      }
+      // Not signed out — unreachable, or the API is broken. The boot loader
+      // turns this into the error sheet rather than pretending the session is
+      // gone and quietly dropping the user on a sign-in form.
+      throw error;
+    }
+  }
+
+  /* ---------- tabs ---------- */
+  function currentTabFromHash() {
+    const hash = (window.location.hash || "").replace("#", "");
+    return TAB_CONFIG[hash] ? hash : "overview";
+  }
+
+  function switchTab(tab) {
+    if (!TAB_CONFIG[tab]) tab = "overview";
+    document.querySelectorAll(".api-panel").forEach((panel) => {
+      panel.classList.toggle("active", panel.id === `tab-${tab}`);
+    });
+    elements.navItems.forEach((item) => {
+      item.classList.toggle("active", item.dataset.tab === tab);
+    });
+    if (elements.pageTitle) elements.pageTitle.textContent = TAB_CONFIG[tab].title;
+    if (window.history.replaceState) {
+      window.history.replaceState(null, "", `#${tab}`);
+    }
+    if (window.innerWidth <= 980) closeSidebar();
+    loadTabData(tab);
+    icons();
+  }
+
+  async function loadTabData(tab) {
+    try {
+      if (tab === "keys") await loadApiKeys();
+      if (tab === "analytics") renderAnalytics();
+    } catch (error) {
+      showToast(error.message || "That section could not load.", "error");
+    }
+  }
+
+  /* ---------- sidebar (mobile) ---------- */
+  const isCompact = () => window.innerWidth <= 980;
+  function openSidebar() {
+    document.body.classList.remove("sidebar-collapsed");
+    elements.pageScrim?.classList.remove("hidden");
+    elements.pageScrim?.classList.add("show");
+  }
+  function closeSidebar() {
+    if (!isCompact()) return;
+    document.body.classList.add("sidebar-collapsed");
+    elements.pageScrim?.classList.remove("show");
+    elements.pageScrim?.classList.add("hidden");
+  }
+  function syncSidebar() {
+    if (isCompact()) closeSidebar();
+    else {
+      document.body.classList.remove("sidebar-collapsed");
+      elements.pageScrim?.classList.add("hidden");
+      elements.pageScrim?.classList.remove("show");
+    }
+  }
+
+  /* ---------- overview ---------- */
+  async function loadOverview() {
+    const data = await apiFetch("/overview").catch((error) =>
+      bootFailure(error, null, false),
+    );
+    if (!data) return;
+    const usage = data.usage || {};
+    el("statTotalKeys").textContent = formatNumber(keys.length);
+    el("statTodayRequests").textContent = formatNumber(usage.today?.requests || 0);
+    el("statTotalTokens").textContent = formatNumber(usage.month?.tokens || 0);
+    el("statMinuteRequests").textContent = formatNumber(
+      data.realtime?.currentMinute || usage.minute?.requests || 0,
+    );
+    renderRequestsChart(data.dailyStats || []);
+    renderModelsChart(data.modelUsage || []);
+    renderRecentActivity(data.dailyStats || []);
+  }
+
+  function renderRequestsChart(dailyStats) {
+    const canvas = el("requestsChart");
+    if (!canvas || !window.Chart) return;
+    const rows = dailyStats.slice(-chartRange);
+    const labels = rows.map((d) => d.date);
+    const requests = rows.map((d) => d.requests ?? d.total_requests ?? 0);
+    const tokens = rows.map((d) => d.tokens ?? d.total_tokens ?? 0);
+
+    charts.requests?.destroy();
+    charts.requests = new Chart(canvas, {
+      data: {
+        labels,
+        datasets: [
+          {
+            type: "line",
+            label: "Requests",
+            data: requests,
+            borderColor: "#ff6600",
+            backgroundColor: "rgba(255,102,0,.12)",
+            fill: true,
+            tension: 0.32,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            borderWidth: 2,
+          },
+          {
+            type: "line",
+            label: "Tokens",
+            data: tokens,
+            borderColor: "rgba(255,255,255,.34)",
+            backgroundColor: "transparent",
+            tension: 0.32,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            borderWidth: 1.5,
+            borderDash: [4, 4],
+            yAxisID: "y1",
+          },
+        ],
+      },
+      options: chartOptions({
+        y1: { position: "right", grid: { drawOnChartArea: false } },
+      }),
+    });
+  }
+
+  function renderModelsChart(modelUsage) {
+    const canvas = el("modelsChart");
+    if (!canvas || !window.Chart) return;
+    const rows = modelUsage.slice(0, 6);
+    charts.models?.destroy();
+    if (rows.length === 0) {
+      charts.models = new Chart(canvas, {
+        type: "doughnut",
+        data: { labels: [], datasets: [{ data: [] }] },
+        options: chartOptions({ cutout: "68%", plugins: { legend: { display: false } } }),
+      });
+      return;
+    }
+    charts.models = new Chart(canvas, {
+      type: "doughnut",
+      data: {
+        labels: rows.map((m) => m.model),
+        datasets: [
+          {
+            data: rows.map((m) => m.requests ?? 0),
+            backgroundColor: [
+              "#ff6600",
+              "#ff8c42",
+              "#d95400",
+              "#ffb27a",
+              "#b34700",
+              "#ffd0ad",
+            ],
+            borderWidth: 0,
+          },
+        ],
+      },
+      options: chartOptions({ cutout: "68%" }),
+    });
+  }
+
+  function renderRecentActivity(dailyStats) {
+    const body = elements.recentActivity;
+    if (!body) return;
+    const rows = dailyStats.slice(0, 7);
+    if (rows.length === 0 || rows.every((d) => (d.requests ?? d.total_requests) === 0)) {
+      body.innerHTML = `<tr><td colspan="4">No recent API activity</td></tr>`;
+      return;
+    }
+    body.innerHTML = rows
+      .map((day) => {
+        const requests = day.requests ?? day.total_requests ?? 0;
+        const tokens = day.tokens ?? day.total_tokens ?? 0;
+        const successful = day.successful ?? day.successful_requests ?? 0;
+        const total = day.total_requests ?? requests;
+        const rate = total > 0 ? ((successful / total) * 100).toFixed(1) : "100";
+        return `<tr>
+          <td>${escapeHtml(formatDate(day.date))}</td>
+          <td class="num">${formatNumber(requests)}</td>
+          <td class="num">${formatNumber(tokens)}</td>
+          <td class="num">${rate}%</td>
+        </tr>`;
+      })
+      .join("");
+  }
+
+  /* ---------- analytics ---------- */
+  function renderAnalytics() {
+    apiFetch("/overview")
+      .then((data) => {
+        renderEndpointChart(data.endpointUsage || []);
+        renderModelDetailChart(data.modelUsage || []);
+        renderTokensChart(data.dailyStats || []);
+        renderDailyBreakdown(data.dailyStats || []);
+      })
+      .catch(() => {});
+  }
+
+  function renderEndpointChart(endpointUsage) {
+    const canvas = el("endpointsChart");
+    if (!canvas || !window.Chart) return;
+    charts.endpoints?.destroy();
+    charts.endpoints = new Chart(canvas, {
+      type: "bar",
+      data: {
+        labels: endpointUsage.map((e) => e.endpoint),
+        datasets: [
+          {
+            label: "Requests",
+            data: endpointUsage.map((e) => e.requests ?? 0),
+            backgroundColor: "rgba(255,102,0,.75)",
+            borderRadius: 6,
+            borderWidth: 0,
+          },
+        ],
+      },
+      options: chartOptions({ indexAxis: "y" }),
+    });
+  }
+
+  function renderModelDetailChart(modelUsage) {
+    const canvas = el("modelsDetailChart");
+    if (!canvas || !window.Chart) return;
+    charts.modelsDetail?.destroy();
+    charts.modelsDetail = new Chart(canvas, {
+      type: "doughnut",
+      data: {
+        labels: modelUsage.map((m) => m.model),
+        datasets: [
+          {
+            data: modelUsage.map((m) => m.requests ?? 0),
+            backgroundColor: [
+              "#ff6600",
+              "#ff8c42",
+              "#d95400",
+              "#ffb27a",
+              "#b34700",
+              "#ffd0ad",
+            ],
+            borderWidth: 0,
+          },
+        ],
+      },
+      options: chartOptions({ cutout: "62%" }),
+    });
+  }
+
+  function renderTokensChart(dailyStats) {
+    const canvas = el("tokensChart");
+    if (!canvas || !window.Chart) return;
+    const rows = dailyStats.slice(-30);
+    charts.tokens?.destroy();
+    charts.tokens = new Chart(canvas, {
+      type: "line",
+      data: {
+        labels: rows.map((d) => d.date),
+        datasets: [
+          {
+            label: "Tokens",
+            data: rows.map((d) => d.tokens ?? d.total_tokens ?? 0),
+            borderColor: "#ff6600",
+            backgroundColor: "rgba(255,102,0,.12)",
+            fill: true,
+            tension: 0.32,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            borderWidth: 2,
+          },
+        ],
+      },
+      options: chartOptions(),
+    });
+  }
+
+  function renderDailyBreakdown(dailyStats) {
+    const body = elements.dailyBreakdownBody;
+    if (!body) return;
+    const rows = dailyStats.slice(0, 30);
+    if (rows.length === 0) {
+      body.innerHTML = `<tr><td colspan="4">No data available</td></tr>`;
+      return;
+    }
+    body.innerHTML = rows
+      .map((day) => {
+        const requests = day.total_requests ?? day.requests ?? 0;
+        const tokens = day.total_tokens ?? day.tokens ?? 0;
+        const successful = day.successful_requests ?? day.successful ?? 0;
+        const rate = requests > 0 ? ((successful / requests) * 100).toFixed(1) : "100";
+        return `<tr>
+          <td>${escapeHtml(formatDate(day.date))}</td>
+          <td class="num">${formatNumber(requests)}</td>
+          <td class="num">${formatNumber(tokens)}</td>
+          <td class="num">${rate}%</td>
+        </tr>`;
+      })
+      .join("");
+  }
+
+  function chartOptions(extra = {}) {
+    const scales = {
+      x: {
+        grid: { display: false },
+        ticks: { color: "#6f6f6f", font: { size: 10 }, maxRotation: 0 },
+      },
+      y: {
+        grid: { color: "rgba(255,255,255,.05)" },
+        ticks: { color: "#6f6f6f", font: { size: 10 } },
+        beginAtZero: true,
+      },
     };
+    if (extra.indexAxis === "y") {
+      scales.x = { grid: { display: false }, ticks: { color: "#8a8a8a", font: { size: 11 } } };
+      scales.y = {
+        grid: { color: "rgba(255,255,255,.05)" },
+        ticks: { color: "#6f6f6f", font: { size: 10 } },
+        beginAtZero: true,
+      };
+    }
+    const y1 = extra.y1;
+    delete extra.y1;
+    const indexAxis = extra.indexAxis;
+    delete extra.indexAxis;
+    const cutout = extra.cutout;
+    delete extra.cutout;
+    const legend = extra.plugins?.legend;
+    delete extra.plugins;
 
-    // State
-    let currentUser = null;
-    let currentTier = null;
-    let currentTab = 'overview';
-    let charts = {};
-    let revokeKeyId = null;
-    let authToken = storageGet("token");
+    if (y1) scales.y1 = { ...y1, ticks: { color: "#6f6f6f", font: { size: 10 } }, beginAtZero: true };
 
-    // DOM Elements
-    const elements = {
-        sidebarToggle: document.getElementById('sidebarToggle'),
-        sidebar: document.querySelector('.api-sidebar'),
-        navItems: document.querySelectorAll('.api-nav-item[data-tab]'),
-        tabPanels: document.querySelectorAll('.api-tab-panel'),
-        pageTitle: document.getElementById('pageTitle'),
-        pageSubtitle: document.getElementById('pageSubtitle'),
-        accountName: document.getElementById('accountName'),
-        accountTier: document.getElementById('accountTier'),
-        accountAvatar: document.getElementById('accountAvatar'),
-        newKeyBtn: document.getElementById('newKeyBtn'),
-        newKeyBtnHero: document.getElementById('newKeyBtnHero'),
-        createFirstKeyBtn: document.getElementById('createFirstKeyBtn'),
-        apiKeysList: document.getElementById('apiKeysList'),
-        noKeysState: document.getElementById('noKeysState'),
-        createKeyModal: document.getElementById('createKeyModal'),
-        createKeyModalBackdrop: document.getElementById('createKeyModalBackdrop'),
-        createKeyModalClose: document.getElementById('createKeyModalClose'),
-        createKeyForm: document.getElementById('createKeyForm'),
-        createKeyCancel: document.getElementById('createKeyCancel'),
-        showKeyModal: document.getElementById('showKeyModal'),
-        showKeyModalBackdrop: document.getElementById('showKeyModalBackdrop'),
-        newApiKey: document.getElementById('newApiKey'),
-        copyKeyBtn: document.getElementById('copyKeyBtn'),
-        showKeyDone: document.getElementById('showKeyDone'),
-        revokeKeyModal: document.getElementById('revokeKeyModal'),
-        revokeKeyModalBackdrop: document.getElementById('revokeKeyModalBackdrop'),
-        revokeKeyName: document.getElementById('revokeKeyName'),
-        revokeKeyCancel: document.getElementById('revokeKeyCancel'),
-        revokeKeyConfirm: document.getElementById('revokeKeyConfirm'),
-        toastContainer: document.getElementById('toastContainer'),
-        contactUpgradeBtn: document.getElementById('contactUpgradeBtn'),
-        planCards: document.getElementById('planCards'),
-    };
-
-    // Tab configurations
-    const tabConfig = {
-        overview: { title: 'Overview', subtitle: 'Your API dashboard at a glance', icon: 'layout-dashboard' },
-        keys: { title: 'API Keys', subtitle: 'Manage your API keys', icon: 'key' },
-        analytics: { title: 'Analytics', subtitle: 'Detailed usage statistics and trends', icon: 'bar-chart-3' },
-        plan: { title: 'Plan & Upgrade', subtitle: 'Upgrade to unlock higher limits and more models', icon: 'crown' },
-        usage: { title: 'Usage & Limits', subtitle: 'Monitor your current usage against plan limits', icon: 'activity' },
-        strikes: { title: 'Strikes & Status', subtitle: 'View your account strikes and API access status', icon: 'alert-triangle' }
-    };
-
-    // Tier configurations
-    const tierConfigs = {
-        free: {
-            id: 'free',
-            name: 'Free',
-            displayName: 'Free',
-            color: '#6b7280',
-            dailyRequestLimit: 200,
-            requestsPerMinute: 6,
-            maxTokensPerRequest: 4096,
-            allowedModels: ['powershot', 'deepwater', 'ultimate', 'northstar'],
-            canUseResearch: false,
-            canUseDeepResearch: false,
-            canUseAgent: false,
-            strikeBypass: false,
-            features: ['200 requests/day', '6 req/min', '4 models', 'Basic support']
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { intersect: false, mode: "index" },
+      cutout,
+      plugins: {
+        legend: {
+          display: legend?.display !== false && Boolean(Object.keys(scales).length > 2),
+          position: "bottom",
+          labels: {
+            color: "#8a8a8a",
+            usePointStyle: true,
+            pointStyle: "circle",
+            boxWidth: 6,
+            padding: 14,
+            font: { size: 11 },
+          },
         },
-        plus: {
-            id: 'plus',
-            name: 'Plus',
-            displayName: 'Plus',
-            color: '#3b82f6',
-            dailyRequestLimit: 2000,
-            requestsPerMinute: 30,
-            maxTokensPerRequest: 8192,
-            allowedModels: ['powershot', 'deepwater', 'ultimate', 'northstar'],
-            canUseResearch: true,
-            canUseDeepResearch: true,
-            canUseAgent: true,
-            strikeBypass: true,
-            features: ['2,000 requests/day', '30 req/min', '4 models', 'Research', 'Deep Research', 'Agent', 'Strike bypass', 'Priority support']
+        tooltip: {
+          backgroundColor: "rgba(14,14,14,.97)",
+          borderColor: "rgba(255,255,255,.12)",
+          borderWidth: 1,
+          titleColor: "#ececec",
+          bodyColor: "#8a8a8a",
+          padding: 11,
+          displayColors: false,
+          cornerRadius: 10,
         },
-        pro: {
-            id: 'pro',
-            name: 'Pro',
-            displayName: 'Pro',
-            color: '#8b5cf6',
-            dailyRequestLimit: 10000,
-            requestsPerMinute: 100,
-            maxTokensPerRequest: 32768,
-            allowedModels: ['powershot', 'deepwater', 'ultimate', 'northstar'],
-            canUseResearch: true,
-            canUseDeepResearch: true,
-            canUseAgent: true,
-            strikeBypass: true,
-            features: ['10,000 requests/day', '100 req/min', '4 models', 'All Plus features', 'Highest limits', 'Custom models', 'Dedicated support']
-        }
+      },
+      scales,
+      ...extra,
     };
+  }
 
-    // API fetch helper (same pattern as app.js)
-    async function apiFetch(path, options = {}) {
-        const headers = {
-            "Content-Type": "application/json",
-            ...(options.headers || {}),
-        };
+  /* ---------- keys ---------- */
+  async function loadApiKeys() {
+    const data = await apiFetch("/keys").catch((error) =>
+      bootFailure(error, { keys: [] }, true),
+    );
+    keys = data.keys || [];
+    renderKeys();
+    const stat = el("statTotalKeys");
+    if (stat) stat.textContent = formatNumber(keys.length);
+    paintAccount();
+    return keys;
+  }
 
-        if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  function renderKeys() {
+    const list = elements.apiKeysList;
+    const empty = elements.noKeysState;
+    if (!list || !empty) return;
 
-        const response = await fetch(`${API_BASE}${path}`, {
-            ...options,
-            headers,
-            credentials: "include",
-        });
-
-        const json = await response.json().catch(() => ({}));
-        if (!response.ok) {
-            const error = new Error(json.error || "Request failed.");
-            error.status = response.status;
-            error.data = json;
-            throw error;
-        }
-
-        return json;
+    if (keys.length === 0) {
+      list.innerHTML = "";
+      list.hidden = true;
+      empty.hidden = false;
+      return;
     }
 
-    // Initialize
-    async function init() {
-        setupEventListeners();
-        syncMobileSidebar();
-        window.addEventListener('resize', syncMobileSidebar);
-        await checkAuth();
-        if (currentUser) {
-            await loadDashboardData();
-            initCharts();
-            setupRealtimeUpdates();
-        }
-        lucide.createIcons();
-    }
-
-    // Event Listeners
-    function setupEventListeners() {
-        // Sidebar toggle
-        elements.sidebarToggle?.addEventListener('click', toggleSidebar);
-
-        // Tap the mobile backdrop to close the sidebar
-        document.querySelector('.api-main')?.addEventListener('click', (e) => {
-            if (window.innerWidth < 860 && e.target === e.currentTarget) {
-                closeSidebar();
+    list.hidden = false;
+    empty.hidden = true;
+    list.innerHTML = keys
+      .map((key) => {
+        const revoked = Boolean(key.revoked_at);
+        const expired = key.expires_at && new Date(key.expires_at).getTime() < Date.now();
+        const statusPill = revoked
+          ? '<span class="pill pill-danger">Revoked</span>'
+          : expired
+            ? '<span class="pill pill-danger">Expired</span>'
+            : '<span class="pill pill-success">Active</span>';
+        return `<article class="key-card">
+          <div class="key-card-head">
+            <div>
+              <h3>${escapeHtml(key.name || "Untitled key")}</h3>
+              <span class="key-prefix">${escapeHtml(key.key_prefix || "")}</span>
+            </div>
+            ${statusPill}
+          </div>
+          <div class="key-meta">
+            <span><i data-lucide="calendar"></i>${escapeHtml(formatDate(key.created_at))}</span>
+            <span><i data-lucide="clock"></i>${escapeHtml(formatRelative(key.last_used_at))}</span>
+            ${
+              key.expires_at
+                ? `<span class="${expired ? "expired" : ""}"><i data-lucide="calendar-clock"></i>${escapeHtml(formatDate(key.expires_at))}</span>`
+                : ""
             }
-        });
-
-        // Navigation
-        elements.navItems.forEach(item => {
-            item.addEventListener('click', (e) => {
-                e.preventDefault();
-                const tab = item.dataset.tab;
-                if (tab) switchTab(tab);
-            });
-        });
-
-        // New key buttons
-        elements.newKeyBtn?.addEventListener('click', () => openCreateKeyModal());
-        elements.createFirstKeyBtn?.addEventListener('click', () => openCreateKeyModal());
-        elements.newKeyBtnHero?.addEventListener('click', () => openCreateKeyModal());
-
-        // Create key modal
-        elements.createKeyModalClose?.addEventListener('click', closeCreateKeyModal);
-        elements.createKeyModalBackdrop?.addEventListener('click', closeCreateKeyModal);
-        elements.createKeyCancel?.addEventListener('click', closeCreateKeyModal);
-        elements.createKeyForm?.addEventListener('submit', handleCreateKey);
-
-        // Show key modal
-        elements.showKeyModalBackdrop?.addEventListener('click', closeShowKeyModal);
-        elements.copyKeyBtn?.addEventListener('click', copyApiKey);
-        elements.showKeyDone?.addEventListener('click', closeShowKeyModal);
-
-        // Revoke key modal
-        elements.revokeKeyModalBackdrop?.addEventListener('click', closeRevokeKeyModal);
-        elements.revokeKeyCancel?.addEventListener('click', closeRevokeKeyModal);
-        elements.revokeKeyConfirm?.addEventListener('click', confirmRevokeKey);
-
-        // Contact upgrade
-        elements.contactUpgradeBtn?.addEventListener('click', () => {
-            window.open('https://discord.gg/gatita', '_blank');
-        });
-
-        // Keyboard shortcuts
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                closeCreateKeyModal();
-                closeShowKeyModal();
-                closeRevokeKeyModal();
-            }
-        });
-
-        // Chart period buttons
-        document.querySelectorAll('.api-chart-period').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.api-chart-period').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                updateRequestsChart(btn.dataset.period);
-            });
-        });
-    }
-
-    // Authentication check
-    async function checkAuth() {
-        try {
-            const data = await apiFetch("/me");
-            currentUser = data.user;
-            currentTier = data.tier;
-            updateAccountDisplay();
-        } catch (error) {
-            console.error('Auth check failed:', error);
-            if (error.status === 401) {
-                // Token expired or invalid
-                authToken = "";
-                storageRemove("token");
-                window.location.href = '/login.html?redirect=/api.html';
-            } else {
-                showToast('error', 'Failed to verify authentication');
-            }
-        }
-    }
-
-    // Update account display in sidebar
-    function updateAccountDisplay() {
-        if (!currentUser) return;
-        
-        elements.accountName.textContent = currentUser.display_name || currentUser.email;
-        elements.accountAvatar.textContent = (currentUser.display_name || currentUser.email).charAt(0).toUpperCase();
-        
-        if (currentTier) {
-            const tier = tierConfigs[currentTier];
-            elements.accountTier.textContent = tier.displayName;
-            elements.accountTier.style.background = tier.color;
-        }
-    }
-
-    // Load dashboard data
-    async function loadDashboardData() {
-        try {
-            // Load tier info
-            const tierData = await apiFetch("/tier");
-            currentTier = tierData.tier;
-            updateAccountDisplay();
-            renderPlanCards();
-            renderUsageLimits();
-            renderAvailableModels();
-            renderStrikes(tierData);
-            updateStatusCard(tierData);
-
-            // Load API keys
-            await loadApiKeys();
-
-            // Load analytics overview
-            await loadAnalyticsOverview();
-
-            // Load realtime data
-            await loadRealtimeAnalytics();
-        } catch (error) {
-            console.error('Failed to load dashboard data:', error);
-            showToast('error', 'Failed to load dashboard data');
-        }
-    }
-
-    // Load API keys
-    async function loadApiKeys() {
-        try {
-            const data = await apiFetch("/keys");
-            renderApiKeys(data.keys);
-        } catch (error) {
-            console.error('Failed to load API keys:', error);
-        }
-    }
-    function renderApiKeys(keys) {
-        if (!keys || keys.length === 0) {
-            elements.apiKeysList.style.display = 'none';
-            elements.noKeysState.style.display = 'block';
-            return;
-        }
-
-        elements.apiKeysList.style.display = 'grid';
-        elements.noKeysState.style.display = 'none';
-
-        elements.apiKeysList.innerHTML = keys.map(key => `
-            <article class="api-key-card" data-key-id="${key.id}">
-                <header class="api-key-header">
-                    <div class="api-key-info">
-                        <h3 class="api-key-name">${escapeHtml(key.name)}</h3>
-                        <span class="api-key-prefix">${escapeHtml(key.key_prefix)}</span>
-                    </div>
-                    <div class="api-key-status ${key.revoked_at ? 'revoked' : 'active'}">
-                        ${key.revoked_at ? 'Revoked' : 'Active'}
-                    </div>
-                </header>
-                <div class="api-key-meta">
-                    <span class="api-key-meta-item">
-                        <i data-lucide="calendar"></i>
-                        <span>${formatDate(key.created_at)}</span>
-                    </span>
-                    ${key.last_used_at ? `
-                        <span class="api-key-meta-item">
-                            <i data-lucide="clock"></i>
-                            <span>Last used: ${formatRelativeTime(key.last_used_at)}</span>
-                        </span>
-                    ` : ''}
-                    ${key.expires_at ? `
-                        <span class="api-key-meta-item ${Date.now() > key.expires_at ? 'expired' : ''}">
-                            <i data-lucide="alert-triangle"></i>
-                            <span>Expires: ${formatDate(key.expires_at)}</span>
-                        </span>
-                    ` : ''}
-                </div>
-                <footer class="api-key-actions">
-                    <button class="api-btn api-btn-ghost api-btn-sm revoke-key-btn" data-key-id="${key.id}" data-key-name="${escapeHtml(key.name)}" ${key.revoked_at ? 'disabled' : ''}>
-                        <i data-lucide="trash-2"></i>
-                        <span data-i18n="api.keys.revoke">Revoke</span>
-                    </button>
-                </footer>
-            </article>
-        `).join('');
-
-        // Add event listeners to revoke buttons
-        document.querySelectorAll('.revoke-key-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const keyId = parseInt(e.currentTarget.dataset.keyId);
-                const keyName = e.currentTarget.dataset.keyName;
-                openRevokeKeyModal(keyId, keyName);
-            });
-        });
-
-        lucide.createIcons();
-    }
-
-    // Load analytics overview
-    async function loadAnalyticsOverview() {
-        try {
-            const data = await apiFetch("/overview");
-            renderOverviewStats(data);
-            renderRequestsChart(data.dailyStats);
-            renderModelsChart(data.modelUsage);
-            renderRecentActivity(data.dailyStats);
-        } catch (error) {
-            console.error('Failed to load analytics overview:', error);
-        }
-    }
-
-    // Load realtime analytics
-    async function loadRealtimeAnalytics() {
-        try {
-            const data = await apiFetch("/realtime");
-            updateRealtimeDisplay(data);
-        } catch (error) {
-            console.error('Failed to load realtime analytics:', error);
-        }
-    }
-
-    // Update realtime display
-    function updateRealtimeDisplay(data) {
-        // Update usage cards
-        updateProgressRing('daily', data.dailyUsed, data.dailyLimit);
-        updateProgressRing('rate', data.currentMinute, data.minuteLimit);
-        
-        // Update stat cards
-        document.getElementById('statTodayRequests').textContent = formatNumber(data.dailyUsed);
-    }
-
-    // Render overview stats
-    function renderOverviewStats(data) {
-        document.getElementById('statTotalKeys').textContent = data.usage?.month?.requests ? '—' : '0'; // Will be updated from keys
-        document.getElementById('statTodayRequests').textContent = formatNumber(data.usage?.today?.requests || 0);
-        document.getElementById('statTotalTokens').textContent = formatNumber(data.usage?.month?.tokens || 0);
-        document.getElementById('statAvgLatency').textContent = '—'; // Would need backend support
-    }
-
-    // Render requests chart
-    function renderRequestsChart(dailyStats) {
-        const ctx = document.getElementById('requestsChart');
-        if (!ctx) return;
-
-        const labels = dailyStats.slice(-30).reverse().map(d => d.date);
-        const requests = dailyStats.slice(-30).reverse().map(d => d.requests);
-        const tokens = dailyStats.slice(-30).reverse().map(d => d.tokens);
-
-        if (charts.requests) charts.requests.destroy();
-
-        charts.requests = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels,
-                datasets: [
-                    {
-                        label: 'Requests',
-                        data: requests,
-                        borderColor: '#ff6600',
-                        backgroundColor: 'rgba(255, 102, 0, 0.1)',
-                        fill: true,
-                        tension: 0.3,
-                        pointRadius: 0,
-                        pointHoverRadius: 4
-                    }
-                ]
-            },
-            options: getChartOptions('Requests')
-        });
-    }
-
-    // Update requests chart for different periods
-    function updateRequestsChart(period) {
-        // Would fetch new data based on period
-        loadAnalyticsOverview();
-    }
-
-    // Render models chart
-    function renderModelsChart(modelUsage) {
-        const ctx = document.getElementById('modelsChart');
-        if (!ctx) return;
-
-        const labels = modelUsage.slice(0, 5).map(m => m.model);
-        const data = modelUsage.slice(0, 5).map(m => m.requests);
-
-        if (charts.models) charts.models.destroy();
-
-        charts.models = new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                labels,
-                datasets: [{
-                    data,
-                    backgroundColor: [
-                        '#ff6600',
-                        '#3b82f6',
-                        '#22c55e',
-                        '#f59e0b',
-                        '#8b5cf6'
-                    ],
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: {
-                            color: '#ffffff',
-                            padding: 16,
-                            usePointStyle: true
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    // Render recent activity
-    function renderRecentActivity(dailyStats) {
-        const container = document.getElementById('recentActivity');
-        if (!container) return;
-
-        const recentDays = dailyStats.slice(0, 5);
-        
-        if (recentDays.length === 0 || recentDays.every(d => d.requests === 0)) {
-            container.innerHTML = '<div class="api-empty-state" data-i18n="api.activity.noActivity">No recent API activity</div>';
-            return;
-        }
-
-        container.innerHTML = recentDays.map(day => `
-            <article class="api-activity-item">
-                <div class="api-activity-date">${formatDate(day.date + 'T00:00:00')}</div>
-                <div class="api-activity-stats">
-                    <span><i data-lucide="activity"></i> ${formatNumber(day.requests)} requests</span>
-                    <span><i data-lucide="cpu"></i> ${formatNumber(day.tokens)} tokens</span>
-                    <span><i data-lucide="check-circle"></i> ${day.successful}% success</span>
-                </div>
-            </article>
-        `).join('');
-
-        lucide.createIcons();
-    }
-
-    // Render plan cards
-    function renderPlanCards() {
-        if (!elements.planCards) return;
-
-        const currentTierId = currentTier || 'free';
-        
-        elements.planCards.innerHTML = Object.values(tierConfigs).map(tier => {
-            const isCurrent = tier.id === currentTierId;
-            const isUpgrade = tierConfigs[currentTierId] && tierConfigs[tier.id].sort_order > tierConfigs[currentTierId].sort_order;
-            
-            return `
-                <article class="api-plan-card ${isCurrent ? 'current' : ''} ${isUpgrade ? 'upgrade' : ''}" data-tier="${tier.id}">
-                    <header class="api-plan-header" style="--plan-color: ${tier.color}">
-                        <h3 class="api-plan-name">${tier.displayName}</h3>
-                        ${isCurrent ? '<span class="api-plan-badge current" data-i18n="api.plan.current">Current Plan</span>' : ''}
-                        ${isUpgrade ? '<span class="api-plan-badge upgrade" data-i18n="api.plan.upgrade">Upgrade</span>' : ''}
-                    </header>
-                    <div class="api-plan-features">
-                        ${tier.features.map(f => `<li><i data-lucide="check"></i> ${f}</li>`).join('')}
-                    </div>
-                    <footer class="api-plan-footer">
-                        ${isCurrent ? `
-                            <button class="api-btn api-btn-secondary api-btn-block" disabled data-i18n="api.plan.currentPlan">Current Plan</button>
-                        ` : isUpgrade ? `
-                            <button class="api-btn api-btn-primary api-btn-block upgrade-plan-btn" data-tier="${tier.id}" data-i18n="api.plan.upgradeTo">Upgrade to ${tier.displayName}</button>
-                        ` : `
-                            <button class="api-btn api-btn-secondary api-btn-block" disabled data-i18n="api.plan.downgrade">Downgrade</button>
-                        `}
-                    </footer>
-                </article>
-            `;
-        }).join('');
-
-        // Add upgrade button listeners
-        document.querySelectorAll('.upgrade-plan-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const tierId = btn.dataset.tier;
-                showToast('info', `Stripe checkout is available for ${tierId} from the plan card.`);
-            });
-        });
-
-        lucide.createIcons();
-    }
-
-    // Render usage limits
-    function renderUsageLimits() {
-        if (!currentTier) return;
-        const tier = tierConfigs[currentTier];
-
-        // Update daily limit card
-        document.getElementById('dailyProgressMax').textContent = `/ ${formatNumber(tier.dailyRequestLimit)}`;
-        document.getElementById('dailyProgressFill').style.stroke = tier.color;
-
-        // Update rate limit card
-        document.getElementById('rateProgressMax').textContent = `/ ${tier.requestsPerMinute}`;
-        document.getElementById('rateProgressFill').style.stroke = tier.color;
-
-        // Update token limit card
-        document.getElementById('tokenProgressMax').textContent = `/ ${formatNumber(tier.maxTokensPerRequest)}`;
-        document.getElementById('tokenProgressFill').style.stroke = tier.color;
-
-        // Update reset time
-        const tomorrow = new Date();
-        tomorrow.setHours(0, 0, 0, 0);
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        document.getElementById('dailyResetTime').textContent = `Resets ${formatRelativeTime(tomorrow.getTime())}`;
-    }
-
-    // Render available models
-    function renderAvailableModels() {
-        const container = document.getElementById('availableModelsGrid');
-        if (!container || !currentTier) return;
-
-        const tier = tierConfigs[currentTier];
-        
-        container.innerHTML = tier.allowedModels.map(model => `
-            <article class="api-model-card">
-                <span class="api-model-name">${model}</span>
-                <span class="api-model-badge available" data-i18n="api.usage.available">Available</span>
-            </article>
-        `).join('');
-    }
-
-    // Render strikes
-    function renderStrikes(tierData) {
-        const strikeCount = tierData.strikeCount || 0;
-        const hasStrikes = tierData.hasActiveStrikes || false;
-        const strikesBypass = tierData.strikesBypass || false;
-
-        document.getElementById('strikeCount').textContent = strikeCount;
-        document.getElementById('currentTierDisplay').textContent = tierConfigs[currentTier]?.displayName || 'Free';
-        document.getElementById('strikeBypassStatus').textContent = strikesBypass 
-            ? 'Enabled (Plus/Pro tier)' 
-            : 'Not available (Free tier)';
-        document.getElementById('strikeBypassStatus').className = strikesBypass ? 'api-status-value success' : 'api-status-value warning';
-
-        // Update status indicator
-        const statusDot = document.getElementById('statusDot');
-        const statusText = document.getElementById('statusText');
-        const apiAccessStatus = document.getElementById('apiAccessStatus');
-
-        if (hasStrikes && !strikesBypass) {
-            statusDot.className = 'api-status-dot blocked';
-            statusText.textContent = 'Blocked';
-            statusText.setAttribute('data-i18n', 'api.strikes.blocked');
-            apiAccessStatus.textContent = 'Blocked';
-            apiAccessStatus.className = 'api-status-value danger';
-        } else {
-            statusDot.className = 'api-status-dot active';
-            statusText.textContent = 'Active';
-            statusText.setAttribute('data-i18n', 'api.strikes.active');
-            apiAccessStatus.textContent = 'Enabled';
-            apiAccessStatus.className = 'api-status-value success';
-        }
-    }
-
-    // Update status card
-    function updateStatusCard(tierData) {
-        // Already handled in renderStrikes
-    }
-
-    // Update progress ring
-    function updateProgressRing(type, used, max) {
-        const fill = document.getElementById(`${type}ProgressFill`);
-        const value = document.getElementById(`${type}ProgressValue`);
-        const usedEl = document.getElementById(`${type}Used`);
-        const remainingEl = document.getElementById(`${type}Remaining`);
-
-        if (!fill || !value) return;
-
-        const percentage = max > 0 ? Math.min(used / max, 1) : 0;
-        const circumference = 339; // 2 * PI * 54
-        const offset = circumference * (1 - percentage);
-
-        fill.style.strokeDashoffset = offset;
-        value.textContent = formatNumber(used);
-
-        if (usedEl) usedEl.textContent = `${formatNumber(used)} used this minute`;
-        if (remainingEl) remainingEl.textContent = `${formatNumber(Math.max(0, max - used))} remaining`;
-
-        // Color coding
-        fill.classList.remove('warning', 'danger');
-        if (percentage >= 0.9) fill.classList.add('danger');
-        else if (percentage >= 0.7) fill.classList.add('warning');
-    }
-
-    // Initialize charts
-    function initCharts() {
-        // Charts are initialized when data loads
-    }
-
-    // Setup realtime updates
-    function setupRealtimeUpdates() {
-        // Update realtime data every 5 seconds
-        setInterval(loadRealtimeAnalytics, 5000);
-    }
-
-    // Tab switching
-    function switchTab(tab) {
-        if (!tabConfig[tab]) return;
-
-        currentTab = tab;
-
-        // Update nav items
-        elements.navItems.forEach(item => {
-            item.classList.toggle('active', item.dataset.tab === tab);
-        });
-
-        // Update tab panels
-        elements.tabPanels.forEach(panel => {
-            panel.classList.toggle('active', panel.id === `tab-${tab}`);
-        });
-
-        // Update page title
-        const config = tabConfig[tab];
-        document.querySelector('#pageTitle h1').textContent = config.title;
-        document.getElementById('pageSubtitle').textContent = config.subtitle;
-
-        // Load tab-specific data
-        loadTabData(tab);
-
-        // Close sidebar on mobile
-        if (window.innerWidth < 860) {
-            closeSidebar();
-        }
-
-        lucide.createIcons();
-    }
-
-    // Load tab-specific data
-    async function loadTabData(tab) {
-        switch (tab) {
-            case 'analytics':
-                await loadFullAnalytics();
-                break;
-            case 'keys':
-                await loadApiKeys();
-                break;
-            case 'plan':
-                renderPlanCards();
-                break;
-            case 'usage':
-                renderUsageLimits();
-                renderAvailableModels();
-                break;
-            case 'strikes':
-                // Already loaded in loadDashboardData
-                break;
-        }
-    }
-
-    // Load full analytics
-    async function loadFullAnalytics() {
-        try {
-            const data = await apiFetch("/overview");
-            renderAnalyticsCharts(data);
-            renderDailyBreakdown(data.dailyStats);
-        } catch (error) {
-            console.error('Failed to load full analytics:', error);
-        }
-    }
-
-    // Render analytics charts
-    function renderAnalyticsCharts(data) {
-        // Endpoints chart
-        const endpointsCtx = document.getElementById('endpointsChart');
-        if (endpointsCtx && data.endpointUsage) {
-            if (charts.endpoints) charts.endpoints.destroy();
-            charts.endpoints = new Chart(endpointsCtx, {
-                type: 'bar',
-                data: {
-                    labels: data.endpointUsage.map(e => e.endpoint),
-                    datasets: [{
-                        label: 'Requests',
-                        data: data.endpointUsage.map(e => e.requests),
-                        backgroundColor: 'rgba(255, 102, 0, 0.7)',
-                        borderColor: '#ff6600',
-                        borderWidth: 1,
-                        borderRadius: 4
-                    }]
-                },
-                options: getChartOptions('Requests by Endpoint')
-            });
-        }
-
-        // Models detail chart
-        const modelsDetailCtx = document.getElementById('modelsDetailChart');
-        if (modelsDetailCtx && data.modelUsage) {
-            if (charts.modelsDetail) charts.modelsDetail.destroy();
-            charts.modelsDetail = new Chart(modelsDetailCtx, {
-                type: 'pie',
-                data: {
-                    labels: data.modelUsage.map(m => m.model),
-                    datasets: [{
-                        data: data.modelUsage.map(m => m.requests),
-                        backgroundColor: [
-                            '#ff6600', '#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6',
-                            '#ec4899', '#06b6d4', '#84cc16', '#f97316'
-                        ],
-                        borderWidth: 0
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    plugins: {
-                        legend: {
-                            position: 'bottom',
-                            labels: { color: '#ffffff', padding: 12, usePointStyle: true }
-                        }
-                    }
-                }
-            });
-        }
-
-        // Tokens chart
-        const tokensCtx = document.getElementById('tokensChart');
-        if (tokensCtx && data.dailyStats) {
-            const daily = data.dailyStats.slice(-30).reverse();
-            if (charts.tokens) charts.tokens.destroy();
-            charts.tokens = new Chart(tokensCtx, {
-                type: 'line',
-                data: {
-                    labels: daily.map(d => d.date),
-                    datasets: [{
-                        label: 'Tokens',
-                        data: daily.map(d => d.tokens),
-                        borderColor: '#3b82f6',
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        fill: true,
-                        tension: 0.3,
-                        pointRadius: 0,
-                        pointHoverRadius: 4
-                    }]
-                },
-                options: getChartOptions('Token Usage')
-            });
-        }
-
-        // Errors chart
-        const errorsCtx = document.getElementById('errorsChart');
-        if (errorsCtx && data.dailyStats) {
-            const daily = data.dailyStats.slice(-30).reverse();
-            if (charts.errors) charts.errors.destroy();
-            charts.errors = new Chart(errorsCtx, {
-                type: 'line',
-                data: {
-                    labels: daily.map(d => d.date),
-                    datasets: [{
-                        label: 'Error Rate %',
-                        data: daily.map(d => d.requests > 0 ? ((d.failed / d.requests) * 100).toFixed(2) : 0),
-                        borderColor: '#ef4444',
-                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                        fill: true,
-                        tension: 0.3,
-                        pointRadius: 0,
-                        pointHoverRadius: 4
-                    }]
-                },
-                options: getChartOptions('Error Rate %', { min: 0, max: 100 })
-            });
-        }
-    }
-
-    // Render daily breakdown table
-    function renderDailyBreakdown(dailyStats) {
-        const tbody = document.getElementById('dailyBreakdownBody');
-        if (!tbody) return;
-
-        const recent = dailyStats.slice(0, 30);
-        
-        if (recent.length === 0) {
-            tbody.innerHTML = '<tr class="api-empty-row"><td colspan="5" data-i18n="api.analytics.noData">No data available</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = recent.map(day => `
-            <tr>
-                <td>${formatDate(day.date + 'T00:00:00')}</td>
-                <td>${formatNumber(day.total_requests)}</td>
-                <td>${formatNumber(day.total_tokens)}</td>
-                <td>${day.total_requests > 0 ? ((day.successful_requests / day.total_requests) * 100).toFixed(1) : 0}%</td>
-                <td>—</td>
-            </tr>
-        `).join('');
-    }
-
-    // Modal functions
-    function openCreateKeyModal() {
-        elements.createKeyModal.classList.remove('hidden');
-        document.body.style.overflow = 'hidden';
-        setTimeout(() => document.getElementById('keyName').focus(), 100);
-    }
-
-    function closeCreateKeyModal() {
-        elements.createKeyModal.classList.add('hidden');
-        document.body.style.overflow = '';
-        elements.createKeyForm.reset();
-    }
-
-    function openShowKeyModal(key) {
-        elements.newApiKey.textContent = key;
-        elements.showKeyModal.classList.remove('hidden');
-        document.body.style.overflow = 'hidden';
-    }
-
-    function closeShowKeyModal() {
-        elements.showKeyModal.classList.add('hidden');
-        document.body.style.overflow = '';
-    }
-
-    function openRevokeKeyModal(keyId, keyName) {
-        revokeKeyId = keyId;
-        elements.revokeKeyName.textContent = keyName;
-        elements.revokeKeyModal.classList.remove('hidden');
-        document.body.style.overflow = 'hidden';
-    }
-
-    function closeRevokeKeyModal() {
-        elements.revokeKeyModal.classList.add('hidden');
-        document.body.style.overflow = '';
-        revokeKeyId = null;
-    }
-
-    async function confirmRevokeKey() {
-        if (!revokeKeyId) return;
-
-        try {
-            await apiFetch(`/keys/${revokeKeyId}`, { method: 'DELETE' });
-            showToast('success', 'API key revoked');
-            closeRevokeKeyModal();
-            await loadApiKeys();
-        } catch (error) {
-            console.error('Revoke key error:', error);
-            showToast('error', error.data?.error || 'Failed to revoke key');
-        }
-    }
-
-    async function handleCreateKey(e) {
-        e.preventDefault();
-        
-        const formData = new FormData(elements.createKeyForm);
-        const name = formData.get('name').trim();
-        const expiresInDays = parseInt(formData.get('expiresInDays')) || 0;
-
-        if (!name) {
-            showToast('error', 'Key name is required');
-            return;
-        }
-
-        try {
-            const data = await apiFetch('/keys', {
-                method: 'POST',
-                body: JSON.stringify({ name, expiresInDays })
-            });
-            closeCreateKeyModal();
-            openShowKeyModal(data.key.key);
-            await loadApiKeys();
-        } catch (error) {
-            console.error('Create key error:', error);
-            showToast('error', error.data?.error || 'Failed to create key');
-        }
-    }
-
-    async function copyApiKey() {
-        const key = elements.newApiKey.textContent;
-        try {
-            await navigator.clipboard.writeText(key);
-            showToast('success', 'API key copied to clipboard');
-            elements.copyKeyBtn.innerHTML = '<i data-lucide="check"></i> <span data-i18n="api.keys.copied">Copied!</span>';
-            lucide.createIcons();
-            setTimeout(() => {
-                elements.copyKeyBtn.innerHTML = '<i data-lucide="copy"></i> <span data-i18n="api.keys.copy">Copy</span>';
-                lucide.createIcons();
-            }, 2000);
-        } catch (error) {
-            showToast('error', 'Failed to copy key');
-        }
-    }
-
-    // Sidebar functions
-    function toggleSidebar() {
-        document.body.classList.toggle('sidebar-collapsed');
-        const expanded = !document.body.classList.contains('sidebar-collapsed');
-        elements.sidebarToggle.setAttribute('aria-expanded', expanded);
-    }
-    function closeSidebar() {
-        if (window.innerWidth < 860) {
-            document.body.classList.add('sidebar-collapsed');
-            elements.sidebarToggle.setAttribute('aria-expanded', 'false');
-        }
-    }
-
-    // Keep the off-canvas sidebar hidden by default on small screens
-    function syncMobileSidebar() {
-        if (window.innerWidth < 860) {
-            document.body.classList.add('sidebar-collapsed');
-            elements.sidebarToggle.setAttribute('aria-expanded', 'false');
-        }
-    }
-
-    // Toast notifications
-    function showToast(type, message) {
-        const toast = document.createElement('div');
-        toast.className = `api-toast api-toast-${type}`;
-        toast.setAttribute('role', 'alert');
-        
-        const icons = {
-            success: 'check-circle',
-            error: 'alert-circle',
-            warning: 'alert-triangle',
-            info: 'info'
-        };
-
-        toast.innerHTML = `
-            <i data-lucide="${icons[type]}"></i>
-            <span>${escapeHtml(message)}</span>
-            <button class="api-toast-close" aria-label="Dismiss">
-                <i data-lucide="x"></i>
+          </div>
+          <div class="row">
+            <button class="btn btn-sm" data-use-key-id="${escapeHtml(String(key.id))}" type="button">
+              <i data-lucide="search"></i><span>Test</span>
             </button>
-        `;
+            <button class="btn btn-sm btn-danger" data-revoke-key-id="${escapeHtml(String(key.id))}" data-revoke-key-name="${escapeHtml(key.name || "")}" type="button" ${revoked ? "disabled" : ""}>
+              <i data-lucide="trash-2"></i><span>Revoke</span>
+            </button>
+          </div>
+        </article>`;
+      })
+      .join("");
 
-        toast.querySelector('.api-toast-close').addEventListener('click', () => {
-            toast.classList.add('hiding');
-            setTimeout(() => toast.remove(), 200);
-        });
+    list.querySelectorAll("[data-revoke-key-id]").forEach((button) => {
+      button.addEventListener("click", () =>
+        openRevokeKey(
+          Number(button.dataset.revokeKeyId),
+          button.dataset.revokeKeyName || "",
+        ),
+      );
+    });
 
-        elements.toastContainer.appendChild(toast);
-        lucide.createIcons();
+    list.querySelectorAll("[data-use-key-id]").forEach((button) => {
+      button.addEventListener("click", () => {
+        // Keys are only ever stored hashed, so send the user to the docs
+        // playground or ask them to paste the key they saved.
+        switchTab("models");
+        document.getElementById("testKeyInput")?.focus();
+      });
+    });
 
-        // Auto-dismiss after 5 seconds
-        setTimeout(() => {
-            if (toast.parentNode) {
-                toast.classList.add('hiding');
-                setTimeout(() => toast.remove(), 200);
-            }
-        }, 5000);
+    icons();
+  }
+
+  /* ---------- key test via /v1/models ---------- */
+  function setTesterStatus(text, tone = "") {
+    const status = elements.testKeyStatus;
+    const textEl = elements.testKeyStatusText;
+    if (textEl) textEl.textContent = text;
+    if (status) {
+      status.classList.toggle("is-error", tone === "error");
+      status.classList.toggle("is-ok", tone === "ok");
+      const dot = status.querySelector(".pg-status-dot");
+      if (dot) dot.className = `pg-status-dot ${tone === "error" ? "error" : tone === "ok" ? "success" : ""}`;
+    }
+  }
+
+  async function testKey() {
+    const key = (elements.testKeyInput?.value || "").trim();
+    const output = elements.testedModelsList;
+    if (!output) return;
+
+    if (!key) {
+      setTesterStatus("Enter an API key first.", "error");
+      return;
     }
 
-    // Chart options helper
-    function getChartOptions(label, scaleOptions = {}) {
-        return {
-            responsive: true,
-            maintainAspectRatio: true,
-            interaction: { intersect: false, mode: 'index' },
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    backgroundColor: 'rgba(30, 30, 30, 0.97)',
-                    titleColor: '#ffffff',
-                    bodyColor: '#aaaaaa',
-                    borderColor: 'rgba(255, 255, 255, 0.14)',
-                    borderWidth: 1,
-                    padding: 12,
-                    displayColors: false
-                }
-            },
-            scales: {
-                x: {
-                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                    ticks: { color: '#777777', font: { size: 11 } }
-                },
-                y: {
-                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                    ticks: { color: '#777777', font: { size: 11 } },
-                    ...scaleOptions
-                }
+    elements.testKeyButton.disabled = true;
+    setTesterStatus("Checking key against /v1/models…");
+    output.innerHTML = "";
+
+    try {
+      const response = await fetch(`${PUBLIC_API_BASE}/models`, {
+        headers: { Authorization: `Bearer ${key}` },
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        const message =
+          errorBody?.error?.message ||
+          errorBody?.error ||
+          (response.status === 401
+            ? "That key was rejected. Check it was copied in full."
+            : `Request failed with status ${response.status}.`);
+        throw new Error(message);
+      }
+
+      const data = await response.json();
+      const models = Array.isArray(data?.data) ? data.data : [];
+      const ownedBy = new Set(
+        models.map((model) => model?.owned_by).filter(Boolean),
+      );
+
+      setTesterStatus(
+        models.length
+          ? `${models.length} model${models.length === 1 ? "" : "s"} available to this key`
+          : "This key returned no models.",
+        models.length ? "ok" : "error",
+      );
+
+      output.innerHTML = models.length
+        ? models
+            .map(
+              (model) => `<div class="model-result">
+                <code>${escapeHtml(model.id || "")}</code>
+                <span>${escapeHtml(model.owned_by || ownedBy.values().next().value || "")}</span>
+              </div>`,
+            )
+            .join("")
+        : "";
+      icons();
+    } catch (error) {
+      setTesterStatus(error.message || "That key could not be checked.", "error");
+    } finally {
+      elements.testKeyButton.disabled = false;
+    }
+  }
+
+  /* ---------- usage & limits ---------- */
+  async function loadTier() {
+    const data = await apiFetch("/tier").catch((error) =>
+      bootFailure(error, null, false),
+    );
+    if (!data) return;
+    currentTier = data.tier || currentTier;
+    stateTier = data.tierConfig || null;
+    renderTierStatus(data);
+    renderUsage(data);
+    renderPlans();
+  }
+
+  function renderTierStatus(data) {
+    const strikeCount = Number(data.strikeCount || 0);
+    const hasStrikes = Boolean(data.hasActiveStrikes);
+    const bypass = Boolean(data.strikesBypass);
+    const dot = el("statusDot");
+    const statusText = el("statusText");
+    const access = el("apiAccessStatus");
+
+    const blocked = hasStrikes && !bypass;
+    if (dot) dot.classList.toggle("blocked", blocked);
+    if (statusText) statusText.textContent = blocked ? "Blocked" : "Active";
+    if (access) {
+      access.textContent = blocked ? "Blocked" : "Enabled";
+      access.className = blocked ? "danger" : "success";
+    }
+    const count = el("strikeCount");
+    if (count) count.textContent = String(strikeCount);
+    const tierDisplay = el("currentTierDisplay");
+    if (tierDisplay) tierDisplay.textContent = tierConfig().name;
+    const bypassEl = el("strikeBypassStatus");
+    if (bypassEl) {
+      bypassEl.textContent = bypass ? "Enabled" : "Not available";
+      bypassEl.className = bypass ? "success" : "warning";
+    }
+  }
+
+  function renderUsage(data) {
+    const tier = tierConfig();
+    const realtime = data.realtime || {};
+    const dailyUsed = Number(data.dailyUsed ?? realtime.dailyUsed ?? 0);
+    const minuteUsed = Number(data.currentMinute ?? realtime.currentMinute ?? 0);
+
+    const meters = [
+      {
+        title: "Daily requests",
+        used: dailyUsed,
+        max: Number(data.dailyLimit ?? tier.dailyRequestLimit),
+        foot: "resets at midnight UTC",
+      },
+      {
+        title: "Requests this minute",
+        used: minuteUsed,
+        max: Number(data.minuteLimit ?? tier.requestsPerMinute),
+        foot: "resets every 60 seconds",
+      },
+      {
+        title: "Max tokens / request",
+        used: Number(data.tokenLimit ?? tier.maxTokensPerRequest),
+        max: Number(data.tokenLimit ?? tier.maxTokensPerRequest),
+        foot: "per request ceiling",
+      },
+    ];
+
+    if (elements.usageMeters) {
+      elements.usageMeters.innerHTML = meters
+        .map((meter) => {
+          const ratio = meter.max > 0 ? Math.min(meter.used / meter.max, 1) : 0;
+          const tone = ratio >= 0.9 ? "danger" : ratio >= 0.7 ? "warn" : "";
+          return `<div class="meter">
+            <div class="meter-head">
+              <h3>${escapeHtml(meter.title)}</h3>
+              <span>${escapeHtml(formatNumber(meter.max))}</span>
+            </div>
+            <div class="meter-value">${escapeHtml(formatNumber(meter.used))}</div>
+            <div class="meter-track">
+              <div class="meter-fill ${tone}" style="width:${(ratio * 100).toFixed(1)}%"></div>
+            </div>
+            <div class="meter-foot">
+              <span>${escapeHtml(meter.foot)}</span>
+              <span>${escapeHtml(formatNumber(Math.max(0, meter.max - meter.used)))} left</span>
+            </div>
+          </div>`;
+        })
+        .join("");
+    }
+
+    if (elements.limitsList) {
+      const rows = [
+        ["Requests per day", formatNumber(tier.dailyRequestLimit)],
+        ["Requests per minute", formatNumber(tier.requestsPerMinute)],
+        ["Max tokens per request", formatNumber(tier.maxTokensPerRequest)],
+        ["Research mode", tier.research ? "Included" : "Not included"],
+        ["Deep research", tier.deepResearch ? "Included" : "Not included"],
+        ["Gatita Agent", tier.agent ? "Included" : "Not included"],
+      ];
+      elements.limitsList.innerHTML = rows
+        .map(
+          ([label, value]) =>
+            `<tr><td>${escapeHtml(label)}</td><td class="num">${escapeHtml(value)}</td></tr>`,
+        )
+        .join("");
+    }
+  }
+
+  function renderPlans() {
+    const currentId = currentTier || "free";
+    const tiers = ["free", "plus", "pro"].map(
+      (id) => ({ ...TIER_FALLBACKS[id], ...(id === currentId ? stateTier || {} : {}) }),
+    );
+
+    if (elements.planCards) {
+      elements.planCards.innerHTML = tiers
+        .map((tier) => {
+          const isCurrent = tier.id === currentId;
+          const isUpgrade = tier.sort_order > (TIER_FALLBACKS[currentId]?.sort_order ?? 0);
+          const badge = isCurrent
+            ? '<span class="pill pill-accent">Current</span>'
+            : isUpgrade
+              ? '<span class="pill">Upgrade</span>'
+              : "";
+          return `<article class="tier-card ${isCurrent ? "current" : ""} ${isUpgrade ? "upgrade" : ""}">
+            <div class="tier-head"><h3>${escapeHtml(tier.name)}</h3>${badge}</div>
+            <ul class="tier-features">
+              <li><i data-lucide="check"></i>${escapeHtml(formatNumber(tier.dailyRequestLimit))} requests / day</li>
+              <li><i data-lucide="check"></i>${escapeHtml(formatNumber(tier.requestsPerMinute))} requests / min</li>
+              <li><i data-lucide="check"></i>${escapeHtml(formatNumber(tier.maxTokensPerRequest))} max tokens</li>
+              ${tier.research ? '<li><i data-lucide="check"></i>Research mode</li>' : ""}
+              ${tier.deepResearch ? '<li><i data-lucide="check"></i>Deep research</li>' : ""}
+              ${tier.agent ? '<li><i data-lucide="check"></i>Gatita Agent</li>' : ""}
+              ${tier.strikeBypass ? '<li><i data-lucide="check"></i>Strike bypass</li>' : ""}
+            </ul>
+            ${
+              isCurrent
+                ? '<button class="btn" disabled>Current plan</button>'
+                : isUpgrade
+                  ? `<button class="btn btn-primary" data-upgrade-tier="${escapeHtml(tier.id)}">Upgrade to ${escapeHtml(tier.name)}</button>`
+                  : '<button class="btn" disabled>Not available</button>'
             }
+          </article>`;
+        })
+        .join("");
+
+      elements.planCards.querySelectorAll("[data-upgrade-tier]").forEach((button) => {
+        button.addEventListener("click", () =>
+          showToast(`Upgrades to ${button.dataset.upgradeTier} open on support.`),
+        );
+      });
+    }
+
+    if (elements.planComparisonBody) {
+      elements.planComparisonBody.innerHTML = PLAN_MATRIX.map((row) => {
+        const cell = (tier) => {
+          const value = row.get(tier);
+          return value === "check"
+            ? '<i data-lucide="check" class="icon-yes"></i>'
+            : value === "x"
+              ? '<i data-lucide="x" class="icon-no"></i>'
+              : escapeHtml(String(value));
         };
+        return `<tr>
+          <td>${escapeHtml(row.label)}</td>
+          <td>${cell(tiers[0])}</td>
+          <td>${cell(tiers[1])}</td>
+          <td>${cell(tiers[2])}</td>
+        </tr>`;
+      }).join("");
     }
 
-    // Utility functions
-    function formatNumber(num) {
-        if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-        if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-        return num.toString();
+    icons();
+  }
+
+  /* ---------- account dock ---------- */
+  const prefersReducedMotion = () =>
+    window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+
+  const showPanel = (panel) => {
+    if (!panel) return;
+    window.clearTimeout(panel._hideTimer);
+    panel.classList.remove("hidden", "is-closing");
+  };
+  const hidePanel = (panel) => {
+    if (!panel || panel.classList.contains("hidden")) return;
+    window.clearTimeout(panel._hideTimer);
+    if (prefersReducedMotion()) {
+      panel.classList.add("hidden");
+      return;
+    }
+    panel.classList.add("is-closing");
+    panel._hideTimer = window.setTimeout(() => {
+      panel.classList.add("hidden");
+      panel.classList.remove("is-closing");
+    }, 190);
+  };
+  const isAccountPanelOpen = () =>
+    Boolean(
+      elements.accountPanel &&
+      !elements.accountPanel.classList.contains("hidden") &&
+      !elements.accountPanel.classList.contains("is-closing"),
+    );
+  const closeAccountPanel = () => {
+    hidePanel(elements.accountPanel);
+    elements.accountButton?.setAttribute("aria-expanded", "false");
+  };
+  const toggleAccountPanel = () => {
+    if (isAccountPanelOpen()) {
+      closeAccountPanel();
+      return;
+    }
+    showPanel(elements.accountPanel);
+    elements.accountButton?.setAttribute("aria-expanded", "true");
+    icons();
+  };
+
+  const switchAccountTab = (tab) => {
+    document.querySelectorAll("[data-account-tab]").forEach((button) => {
+      button.classList.toggle("active", button.dataset.accountTab === tab);
+    });
+    document.querySelectorAll("[data-account-section]").forEach((section) => {
+      const active = section.dataset.accountSection === tab;
+      section.classList.toggle("active", active);
+      if (active) section.scrollTop = 0;
+    });
+    const scroller = document.querySelector(".account-sections");
+    if (scroller) scroller.scrollTop = 0;
+    icons();
+  };
+
+  const paintAccount = () => {
+    if (!currentUser) return;
+    const name =
+      currentUser.display_name || currentUser.displayName || currentUser.email || "Account";
+    const initial = String(name).trim().charAt(0).toUpperCase() || "G";
+    const tierName = tierConfig().name;
+
+    [elements.accountName, elements.accountModalName].forEach((node) => {
+      if (node) node.textContent = name;
+    });
+    if (elements.accountModalEmail) {
+      elements.accountModalEmail.textContent = currentUser.email || "";
+    }
+    if (elements.accountTier) elements.accountTier.textContent = tierName;
+    if (elements.dockTier) elements.dockTier.textContent = tierName;
+    if (elements.dockKeyCount) {
+      elements.dockKeyCount.textContent = formatNumber(keys.length);
     }
 
-    function formatDate(timestamp) {
-        const date = new Date(timestamp);
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    }
+    [elements.accountAvatar, elements.accountPanelAvatar].forEach((node) => {
+      if (node) node.textContent = initial;
+    });
 
-    function formatRelativeTime(timestamp) {
-        const now = Date.now();
-        const diff = timestamp - now;
-        
-        if (diff < 0) return 'just now';
-        
-        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-        
-        if (days > 0) return `${days}d ${hours}h`;
-        if (hours > 0) return `${hours}h ${minutes}m`;
-        return `${minutes}m`;
-    }
+    elements.accountButton?.setAttribute(
+      "aria-label",
+      `Account: ${name}, ${tierName}`,
+    );
+  };
 
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
+  async function signOut() {
+    await apiFetch("/auth/logout", {
+      method: "POST",
+      body: JSON.stringify({}),
+    }).catch(() => {});
+    authToken = "";
+    storageRemove("token");
+    window.location.href = "/index.html";
+  }
 
-    // Initialize when DOM is ready
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
+  /* ---------- modals ---------- */
+  const openModal = (node) => {
+    if (!node) return;
+    node.classList.remove("hidden", "is-closing");
+    document.body.classList.add("is-locked");
+  };
+  const closeModal = (node) => {
+    if (!node) return;
+    node.classList.add("hidden");
+    node.classList.remove("is-closing");
+    if (
+      [elements.createKeyModal, elements.showKeyModal, elements.revokeKeyModal].every(
+        (m) => !m || m.classList.contains("hidden"),
+      )
+    ) {
+      document.body.classList.remove("is-locked");
     }
+  };
+
+  function openCreateKeyModal() {
+    openModal(elements.createKeyModal);
+    setTimeout(() => el("keyName")?.focus(), 60);
+  }
+  function closeCreateKeyModal() {
+    closeModal(elements.createKeyModal);
+    elements.createKeyForm?.reset();
+  }
+  function openRevokeKey(keyId, keyName) {
+    revokeKeyId = keyId;
+    if (elements.revokeKeyName) {
+      elements.revokeKeyName.textContent = keyName || "This key";
+    }
+    openModal(elements.revokeKeyModal);
+  }
+  function closeRevokeKeyModal() {
+    closeModal(elements.revokeKeyModal);
+    revokeKeyId = null;
+  }
+
+  async function handleCreateKey(event) {
+    event.preventDefault();
+    const name = (el("keyName")?.value || "").trim();
+    const expiresInDays = Number(el("keyExpiry")?.value || 0);
+    if (!name) {
+      showToast("Key name is required.", "error");
+      return;
+    }
+    try {
+      const data = await apiFetch("/keys", {
+        method: "POST",
+        body: JSON.stringify({ name, expiresInDays }),
+      });
+      closeCreateKeyModal();
+      const created = data.key?.key || "";
+      if (elements.newApiKey) elements.newApiKey.textContent = created;
+      openModal(elements.showKeyModal);
+      await loadApiKeys();
+    } catch (error) {
+      showToast(error.message || "Could not create the key.", "error");
+    }
+  }
+
+  async function confirmRevokeKey() {
+    if (!revokeKeyId) return;
+    try {
+      await apiFetch(`/keys/${revokeKeyId}`, {
+        method: "DELETE",
+        body: JSON.stringify({}),
+      });
+      closeRevokeKeyModal();
+      await loadApiKeys();
+      showToast("Key revoked.", "success");
+    } catch (error) {
+      showToast(error.message || "Could not revoke the key.", "error");
+    }
+  }
+
+  async function copyApiKey() {
+    const text = elements.newApiKey?.textContent || "";
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast("Key copied to clipboard.", "success");
+      if (elements.copyKeyBtn) {
+        elements.copyKeyBtn.innerHTML = '<i data-lucide="check"></i><span>Copied</span>';
+        icons();
+        setTimeout(() => {
+          elements.copyKeyBtn.innerHTML = '<i data-lucide="copy"></i><span>Copy</span>';
+          icons();
+        }, 1800);
+      }
+    } catch (_) {
+      showToast("Copy was blocked by the browser.", "error");
+    }
+  }
+
+  /* ---------- realtime ---------- */
+  async function pollRealtime() {
+    const data = await apiFetch("/realtime").catch(() => null);
+    if (!data) return;
+    const minute = el("statMinuteRequests");
+    if (minute) minute.textContent = formatNumber(data.currentMinute || 0);
+  }
+
+  /* ---------- events ---------- */
+  function bindEvents() {
+    elements.sidebarToggle?.addEventListener("click", () => {
+      if (document.body.classList.contains("sidebar-collapsed")) openSidebar();
+      else closeSidebar();
+    });
+    elements.pageScrim?.addEventListener("click", closeSidebar);
+
+    elements.navItems.forEach((item) => {
+      item.addEventListener("click", (event) => {
+        event.preventDefault();
+        switchTab(item.dataset.tab);
+      });
+    });
+
+    [elements.newKeyBtn, elements.createFirstKeyBtn].forEach((button) => {
+      button?.addEventListener("click", openCreateKeyModal);
+    });
+    elements.createKeyModalClose?.addEventListener("click", closeCreateKeyModal);
+    elements.createKeyCancel?.addEventListener("click", closeCreateKeyModal);
+    elements.createKeyForm?.addEventListener("submit", handleCreateKey);
+
+    elements.showKeyDone?.addEventListener("click", () => closeModal(elements.showKeyModal));
+    elements.copyKeyBtn?.addEventListener("click", copyApiKey);
+
+    elements.revokeKeyCancel?.addEventListener("click", closeRevokeKeyModal);
+    elements.revokeKeyConfirm?.addEventListener("click", confirmRevokeKey);
+
+    elements.accountButton?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleAccountPanel();
+    });
+    document.querySelector(".account-nav")?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-account-tab]");
+      if (button) switchAccountTab(button.dataset.accountTab);
+    });
+    elements.accountSignOutButton?.addEventListener("click", signOut);
+    elements.dockNewKeyButton?.addEventListener("click", () => {
+      closeAccountPanel();
+      openCreateKeyModal();
+    });
+    elements.dockTestKeyButton?.addEventListener("click", () => {
+      closeAccountPanel();
+      switchTab("models");
+      document.getElementById("testKeyInput")?.focus();
+    });
+    document.addEventListener("pointerdown", (event) => {
+      if (!isAccountPanelOpen()) return;
+      const path = event.composedPath ? event.composedPath() : [];
+      if (
+        path.includes(elements.accountPanel) ||
+        path.includes(elements.accountButton)
+      ) {
+        return;
+      }
+      closeAccountPanel();
+    });
+
+    elements.contactUpgradeBtn?.addEventListener("click", () =>
+      window.open("https://discord.gg/gatita", "_blank", "noopener"),
+    );
+
+    elements.testKeyButton?.addEventListener("click", testKey);
+    elements.testKeyInput?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        testKey();
+      }
+    });
+
+    document.querySelectorAll(".chart-periods button").forEach((button) => {
+      button.addEventListener("click", () => {
+        document
+          .querySelectorAll(".chart-periods button")
+          .forEach((b) => b.classList.remove("active"));
+        button.classList.add("active");
+        chartRange = Number(button.dataset.period || 30);
+        loadOverview();
+      });
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        closeCreateKeyModal();
+        closeModal(elements.showKeyModal);
+        closeRevokeKeyModal();
+      }
+    });
+
+    window.addEventListener("hashchange", () => switchTab(currentTabFromHash()));
+    window.addEventListener("resize", syncSidebar);
+  }
+
+  /* ---------- boot ---------- */
+  async function init() {
+    bindEvents();
+    syncSidebar();
+
+    const boot = (async () => {
+      const signedIn = await checkAuth();
+      if (!signedIn) {
+        // Sign in from here rather than bouncing to another page.
+        elements.authForm?.addEventListener("submit", submitApiAuth);
+        elements.accountButton?.addEventListener("click", () => {
+          elements.authEmail?.focus();
+        });
+        icons();
+        return;
+      }
+
+      await Promise.all([loadApiKeys(), loadTier()]);
+      await loadOverview();
+      switchTab(currentTabFromHash());
+      icons();
+      setInterval(pollRealtime, 8000);
+    })();
+
+    const settled = boot
+      .catch((error) => {
+        // Keep the shell usable behind the error sheet.
+        switchTab(currentTabFromHash());
+        icons();
+        if (!window.Loader) {
+          showToast(error.message || "The Gatita API could not be reached.", "error");
+        }
+      })
+      .finally(() => {
+        booting = false;
+      });
+
+    if (window.Loader) {
+      // The splash screen holds until the dashboard's first round-trip lands.
+      window.Loader.critical("dashboard", boot, "The Gatita API could not be reached.");
+    }
+    await settled;
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
 })();
