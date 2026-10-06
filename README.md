@@ -1,4 +1,4 @@
-![Gatita AI Banner Image](/assets/ask.png)
+![Gatita AI Banner Image](/assets/banner.webp)
 # Gatita AI
 Gatita AI is a family of closed-source AI models designed for human-like text generation.
 
@@ -6,22 +6,28 @@ Gatita AI is a family of closed-source AI models designed for human-like text ge
 You and anyone can use Gatita AI for free at [https://gatita.tech/](https://gatita.tech/)
 
 ## Skills
-- 💾 Coding in over 60 languages
+- 💾 Coding in over 70 languages
+- 📖 3.1T+ parameters
 - 📝 Writing essays & outlines
 - 📓 Organizing files
+- 📅 Planning and schedules
 - 🖼️ Image processing
 - 🧮 Mathematics and complex tasks
 - 🔏 Identifying cybersecurity threats
 - ➕ And ***so much more***
 
 ## API & Resources
-Currently, the Gatita AI API is not free to use or available for consumers. The Ask website is the only client capable of running Gatita AI for the time being.
+The Gatita AI API can be used by anyone with a Gatita Ask account.
 
-At some point, potentially in the near future, there may be API access for select individuals.
+### How to Gain API Access
+1. [Login](https://gatita.tech/login) to your Gatita account.
+2. Find the API Dashboard in your account settings.
+3. Open the API Keys menu + create a key.
+4. Read the [docs](https://gatita.tech/api-docs/) for how to use the API and examples!
 
 ## Credits
 ### Training
-- cooper (@c0xpr)
+- cooper (@cx2pr)
 - aiden (@a1d9n)
 - redlox (@red10x)
 - mccat (@_mccat)
@@ -31,8 +37,9 @@ At some point, potentially in the near future, there may be API access for selec
 ### Translations
 - Confuzzled (@santi_19363)
 - Google Translate Classic
-- Supervised by @c0xpr
+- Supervised by @cx2pr
 
 ### Website
-- cooper (@c0xpr)
+- cooper (@cx2pr)
+- Gatita 7.1 Max
 
