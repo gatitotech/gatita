@@ -211,24 +211,6 @@ const els = {
   authDisplayName: document.getElementById("authDisplayName"),
   authPassword: document.getElementById("authPassword"),
   authError: document.getElementById("authError"),
-  verifyModal: document.getElementById("verifyModal"),
-  verifyEmailTarget: document.getElementById("verifyEmailTarget"),
-  verifyDeliveryNote: document.getElementById("verifyDeliveryNote"),
-  verifyCodeStep: document.getElementById("verifyCodeStep"),
-  verifyCodeInput: document.getElementById("verifyCodeInput"),
-  verifyError: document.getElementById("verifyError"),
-  verifySubmitButton: document.getElementById("verifySubmitButton"),
-  verifyResendButton: document.getElementById("verifyResendButton"),
-  verifyChangeEmailButton: document.getElementById("verifyChangeEmailButton"),
-  verifyChangeStep: document.getElementById("verifyChangeStep"),
-  verifyNewEmail: document.getElementById("verifyNewEmail"),
-  verifyNewEmailPassword: document.getElementById("verifyNewEmailPassword"),
-  verifyChangeError: document.getElementById("verifyChangeError"),
-  verifyChangeSubmit: document.getElementById("verifyChangeSubmit"),
-  verifyChangeBack: document.getElementById("verifyChangeBack"),
-  accountEmailValue: document.getElementById("accountEmailValue"),
-  accountEmailStatus: document.getElementById("accountEmailStatus"),
-  accountChangeEmailButton: document.getElementById("accountChangeEmailButton"),
   toast: document.getElementById("toast"),
   browserCheckStatus: document.getElementById("browserCheckStatus"),
   authBrowserCheckStatus: document.getElementById("authBrowserCheckStatus"),
@@ -1388,21 +1370,6 @@ const updateAccount = () => {
     setGuestLockedToggle(els.autoWebToggle, true);
     setGuestLockedToggle(els.deepResearchToggle, true);
     setGuestLockedToggle(els.agenticToggle, true);
-  }
-  // Reflect the account email + verification state in the settings view.
-  if (els.accountEmailValue) {
-    els.accountEmailValue.textContent =
-      (state.user && (state.user.pendingEmail || state.user.email)) || "—";
-  }
-  if (els.accountEmailStatus) {
-    const verified = Boolean(state.user?.emailVerified);
-    const pending = Boolean(state.user?.pendingEmail);
-    els.accountEmailStatus.textContent = pending
-      ? "Pending — confirm the code sent to your new email"
-      : verified
-        ? "Verified"
-        : "Not verified";
-    els.accountEmailStatus.classList.toggle("verified", verified);
   }
   // Switch the dock between the signed-out sign-in form and settings.
   els.accountAuthView?.classList.toggle("hidden", Boolean(state.user));
@@ -2806,15 +2773,9 @@ const fetchMe = async () => {
     els.researchToggle.checked = true;
   }
   updateSettingsSummary();
-  maybeRequireEmailVerification();
 };
 
 const fetchChats = async () => {
-  if (state.user && !state.user.emailVerified) {
-    state.chats = [];
-    renderChats();
-    return;
-  }
   const query = state.chatSearch
     ? `?q=${encodeURIComponent(state.chatSearch)}`
     : "";
@@ -3103,13 +3064,6 @@ const sendMessage = async (options = {}) => {
     showToast(
       `Chat access is paused for about ${formatDuration(Number(state.accountStatus.chatBlockedUntil) - Date.now())}.`,
     );
-    return;
-  }
-  if (state.user && !state.user.emailVerified) {
-    showVerifyModal({
-      email: state.user.pendingEmail || state.user.email,
-      emailServiceConfigured: state.config?.emailServiceConfigured,
-    });
     return;
   }
   if (
@@ -4411,161 +4365,6 @@ const setAuthMode = (mode) => {
     mode === "login" ? "current-password" : "new-password";
 };
 
-// ---- email verification ----
-// Accounts that have not confirmed their email can sign in but cannot use
-// Gatita. This modal drives the confirm / resend / change-email flow.
-const verifyState = { pendingEmail: "" };
-
-const setVerifyStep = (step) => {
-  els.verifyCodeStep?.classList.toggle("hidden", step !== "code");
-  els.verifyChangeStep?.classList.toggle("hidden", step !== "change");
-};
-
-const showVerifyModal = ({
-  email = "",
-  emailServiceConfigured = true,
-  emailDelivered = true,
-} = {}) => {
-  if (!state.user) return;
-  if (email) verifyState.pendingEmail = email;
-  const target =
-    verifyState.pendingEmail ||
-    state.user.pendingEmail ||
-    state.user.email ||
-    "your email";
-  if (els.verifyEmailTarget) els.verifyEmailTarget.textContent = target;
-  if (els.verifyDeliveryNote) {
-    const configured = emailServiceConfigured !== false;
-    const showNote = !configured || !emailDelivered;
-    els.verifyDeliveryNote.classList.toggle("hidden", !showNote);
-    els.verifyDeliveryNote.textContent = configured
-      ? "The code may take a minute to arrive. Check your spam folder too."
-      : "Email delivery is not configured on this server yet. An admin can finish setup.";
-  }
-  if (els.verifyError) els.verifyError.textContent = "";
-  if (els.verifyChangeError) els.verifyChangeError.textContent = "";
-  setVerifyStep("code");
-  showWithMotion(els.verifyModal);
-  refreshIcons();
-  els.verifyCodeInput?.focus();
-};
-
-const hideVerifyModal = () => hideWithMotion(els.verifyModal);
-
-const maybeRequireEmailVerification = () => {
-  if (state.user && !state.user.emailVerified) {
-    showVerifyModal({
-      email: state.user.pendingEmail || state.user.email,
-      emailServiceConfigured: state.config?.emailServiceConfigured,
-    });
-  }
-};
-
-const applyVerifiedUser = (data) => {
-  if (data?.user) state.user = data.user;
-  if (data?.accountStatus) updateAccountStatus(data.accountStatus);
-  if (data?.usage) updateUsage(data.usage);
-  updateAccount();
-};
-
-const verifyEmail = async () => {
-  const code = (els.verifyCodeInput?.value || "").trim();
-  els.verifyError.textContent = "";
-  if (!code) {
-    els.verifyError.textContent = "Enter the code from your email.";
-    return;
-  }
-  els.verifySubmitButton.disabled = true;
-  try {
-    const data = await apiFetch("/auth/verify-email", {
-      method: "POST",
-      body: JSON.stringify({ code }),
-    });
-    applyVerifiedUser(data);
-    els.verifyCodeInput.value = "";
-    hideVerifyModal();
-    showToast(
-      data.emailChanged
-        ? "Email updated and verified. You're all set!"
-        : "Email verified. You're all set!",
-    );
-    await fetchChats();
-  } catch (error) {
-    els.verifyError.textContent = error.message || "Could not verify that code.";
-  } finally {
-    els.verifySubmitButton.disabled = false;
-  }
-};
-
-const resendVerificationCode = async () => {
-  els.verifyError.textContent = "";
-  els.verifyResendButton.disabled = true;
-  try {
-    const data = await apiFetch("/auth/resend-verification", {
-      method: "POST",
-      body: JSON.stringify({}),
-    });
-    if (data.alreadyVerified) {
-      hideVerifyModal();
-      return;
-    }
-    if (data.email) {
-      verifyState.pendingEmail = data.email;
-      if (els.verifyEmailTarget) els.verifyEmailTarget.textContent = data.email;
-    }
-    if (els.verifyDeliveryNote) {
-      const configured = data.emailServiceConfigured !== false;
-      const showNote = !configured || !data.emailDelivered;
-      els.verifyDeliveryNote.classList.toggle("hidden", !showNote);
-      els.verifyDeliveryNote.textContent = configured
-        ? "The code may take a minute to arrive. Check your spam folder too."
-        : "Email delivery is not configured on this server yet.";
-    }
-    showToast(data.emailDelivered ? "Verification code sent." : "Email could not be sent. Please try again shortly.");
-  } catch (error) {
-    els.verifyError.textContent = error.message || "Could not resend the code.";
-  } finally {
-    // Mirror the server-side resend cooldown so the button cannot be spammed.
-    setTimeout(() => {
-      els.verifyResendButton.disabled = false;
-    }, 30000);
-  }
-};
-
-const submitChangeEmail = async () => {
-  els.verifyChangeError.textContent = "";
-  const email = (els.verifyNewEmail?.value || "").trim();
-  const password = els.verifyNewEmailPassword?.value || "";
-  if (!email) {
-    els.verifyChangeError.textContent = "Enter the new email address.";
-    return;
-  }
-  if (!password) {
-    els.verifyChangeError.textContent = "Enter your current password.";
-    return;
-  }
-  els.verifyChangeSubmit.disabled = true;
-  try {
-    const data = await apiFetch("/auth/change-email", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    });
-    verifyState.pendingEmail = data.pendingEmail || email;
-    if (state.user) state.user.pendingEmail = verifyState.pendingEmail;
-    updateAccount();
-    if (els.verifyEmailTarget) els.verifyEmailTarget.textContent = verifyState.pendingEmail;
-    els.verifyNewEmail.value = "";
-    els.verifyNewEmailPassword.value = "";
-    setVerifyStep("code");
-    showToast(data.emailDelivered ? "Code sent to your new email." : "Email could not be sent. Please try again shortly.");
-  } catch (error) {
-    els.verifyChangeError.textContent =
-      error.message || "Could not change your email.";
-  } finally {
-    els.verifyChangeSubmit.disabled = false;
-  }
-};
-
 const submitAuth = async () => {
   els.authError.textContent = "";
   if (state.config?.browserCheckRequired) {
@@ -4598,13 +4397,6 @@ const submitAuth = async () => {
     updateAccount();
     resetBrowserCheck("auth");
     els.authError.textContent = "";
-    if (data.requiresEmailVerification || (state.user && !state.user.emailVerified)) {
-      showVerifyModal({
-        email: data.verification?.email || state.user?.email,
-        emailServiceConfigured: data.verification?.emailServiceConfigured,
-        emailDelivered: data.verification?.emailDelivered,
-      });
-    }
     switchAccountTab("overview");
     state.activeChatId = null;
     state.activeSharedToken = "";
@@ -5331,34 +5123,6 @@ els.authForm.addEventListener("submit", (event) => {
   submitAuth();
 });
 
-els.verifySubmitButton?.addEventListener("click", () => verifyEmail());
-els.verifyResendButton?.addEventListener("click", () => resendVerificationCode());
-els.verifyChangeSubmit?.addEventListener("click", () => submitChangeEmail());
-els.verifyChangeEmailButton?.addEventListener("click", () => {
-  setVerifyStep("change");
-  els.verifyNewEmail?.focus();
-});
-els.verifyChangeBack?.addEventListener("click", () => setVerifyStep("code"));
-els.verifyCodeInput?.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    verifyEmail();
-  }
-});
-els.verifyModal?.addEventListener("click", (event) => {
-  if (event.target === els.verifyModal) hideVerifyModal();
-});
-els.accountChangeEmailButton?.addEventListener("click", () => {
-  showVerifyModal({
-    email: state.user?.pendingEmail || state.user?.email,
-    emailServiceConfigured: state.config?.emailServiceConfigured,
-  });
-  if (!state.user?.pendingEmail) {
-    setVerifyStep("change");
-    els.verifyNewEmail?.focus();
-  }
-});
-
 // Keep the topbar border in sync with scroll position for a subtle depth cue.
 els.messageScroll?.addEventListener(
   "scroll",
@@ -5444,7 +5208,6 @@ const initializeApp = async () => {
     }
   }
   await fetchChats();
-  if (state.user && !state.user.emailVerified) window.location.hash = newChatUrl();
   await routeFromHash();
   showCookieBannerIfNeeded();
 };

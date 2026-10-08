@@ -174,7 +174,6 @@
     accountPanelAvatar: el("accountPanelAvatar"),
     accountModalName: el("accountModalName"),
     accountModalEmail: el("accountModalEmail"),
-    verifyBanner: el("verifyBanner"),
     dockTier: el("dockTier"),
     dockKeyCount: el("dockKeyCount"),
     accountSignOutButton: el("accountSignOutButton"),
@@ -1371,12 +1370,6 @@
     });
     if (elements.accountModalEmail) {
       elements.accountModalEmail.textContent = currentUser.email || "";
-    }
-    if (elements.verifyBanner) {
-      elements.verifyBanner.classList.toggle(
-        "hidden",
-        Boolean(currentUser.emailVerified),
-      );
     }
     if (elements.accountTier) elements.accountTier.textContent = tierName;
     if (elements.dockTier) elements.dockTier.textContent = tierName;
