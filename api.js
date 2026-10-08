@@ -162,6 +162,7 @@
     subStatusText: el("subStatusText"),
     authGate: el("apiAuthGate"),
     verifyGate: el("apiVerifyGate"),
+    forgotPasswordLink: el("apiForgotPasswordLink"),
     authForm: el("apiAuthForm"),
     authEmail: el("apiAuthEmail"),
     authPassword: el("apiAuthPassword"),
@@ -1622,6 +1623,8 @@
     const boot = (async () => {
       const signedIn = await checkAuth();
       if (!signedIn) {
+        const resetConfig = await apiFetch("/config").catch(() => null);
+        elements.forgotPasswordLink?.classList.toggle("hidden", !resetConfig?.passwordResetAvailable);
         // Sign in from here rather than bouncing to another page.
         elements.authForm?.addEventListener("submit", submitApiAuth);
         elements.accountButton?.addEventListener("click", () => {

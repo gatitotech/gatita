@@ -2833,6 +2833,7 @@ const readFilePayload = (file) =>
 const fetchConfig = async () => {
   const data = await apiFetch("/config");
   state.config = data;
+  setAuthMode(state.authMode);
   updateUsage(data.usage);
   updateAccountStatus(data.accountStatus);
   renderSelects();
@@ -4461,9 +4462,137 @@ const setAuthMode = (mode) => {
   document.querySelectorAll(".register-only").forEach((item) => {
     item.classList.toggle("hidden", mode !== "register");
   });
+  document.querySelectorAll(".login-only").forEach((item) => {
+    item.classList.toggle("hidden", mode !== "login" || !state.config?.passwordResetAvailable);
+  });
   els.authPassword.autocomplete =
     mode === "login" ? "current-password" : "new-password";
 };
+
+const resetEls = {
+  view: document.getElementById("passwordResetView"),
+  open: document.getElementById("forgotPasswordButton"),
+  requestForm: document.getElementById("passwordResetRequestForm"),
+  email: document.getElementById("passwordResetEmail"),
+  requestError: document.getElementById("passwordResetRequestError"),
+  finishForm: document.getElementById("passwordResetFinishForm"),
+  sentNote: document.getElementById("passwordResetSentNote"),
+  code: document.getElementById("passwordResetCode"),
+  password: document.getElementById("passwordResetNewPassword"),
+  finishError: document.getElementById("passwordResetFinishError"),
+  resend: document.getElementById("passwordResetResend"),
+  back: document.getElementById("passwordResetBack"),
+};
+let resetResendUntil = 0;
+let resetResendTimer = null;
+const updateResetResend = () => {
+  const seconds = Math.max(0, Math.ceil((resetResendUntil - Date.now()) / 1000));
+  resetEls.resend.disabled = seconds > 0;
+  resetEls.resend.textContent = seconds > 0 ? `Send another code (${seconds}s)` : "Send another code";
+  if (!seconds && resetResendTimer) {
+    clearInterval(resetResendTimer);
+    resetResendTimer = null;
+  }
+};
+const startResetResendCooldown = () => {
+  resetResendUntil = Date.now() + 60_000;
+  if (!resetResendTimer) resetResendTimer = setInterval(updateResetResend, 1000);
+  updateResetResend();
+};
+
+const showPasswordReset = () => {
+  setAuthMode("login");
+  els.authForm.classList.add("hidden");
+  resetEls.view.classList.remove("hidden");
+  resetEls.requestForm.classList.remove("hidden");
+  resetEls.finishForm.classList.add("hidden");
+  resetEls.email.value = els.authEmail.value.trim();
+  resetEls.requestError.textContent = "";
+  resetEls.finishError.textContent = "";
+  resetEls.email.focus();
+};
+
+const requestPasswordReset = async () => {
+  resetEls.requestError.textContent = "";
+  resetEls.finishError.textContent = "";
+  if (state.config?.browserCheckRequired) await ensureBrowserCheckProof("auth");
+  try {
+    await apiFetch("/auth/request-password-reset", {
+      method: "POST",
+      body: JSON.stringify({ email: resetEls.email.value.trim(), browserProof: state.authBrowserProof }),
+    });
+    resetEls.requestForm.classList.add("hidden");
+    resetEls.finishForm.classList.remove("hidden");
+    resetEls.sentNote.textContent = "If an account uses that email, a code is on its way. Check your inbox and spam folder.";
+    startResetResendCooldown();
+    resetEls.code.focus();
+  } finally {
+    resetBrowserCheck("auth");
+  }
+};
+
+resetEls.open.addEventListener("click", showPasswordReset);
+resetEls.back.addEventListener("click", () => {
+  resetEls.view.classList.add("hidden");
+  els.authForm.classList.remove("hidden");
+  setAuthMode("login");
+  els.authEmail.value = resetEls.email.value.trim();
+  els.authPassword.value = "";
+  els.authEmail.focus();
+});
+resetEls.requestForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = resetEls.requestForm.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    await requestPasswordReset();
+  } catch (error) {
+    resetEls.requestError.textContent = error.message || "Could not request a code.";
+  } finally {
+    button.disabled = false;
+  }
+});
+resetEls.resend.addEventListener("click", async () => {
+  resetEls.resend.disabled = true;
+  try {
+    await requestPasswordReset();
+    resetEls.sentNote.textContent = "If an account uses that email, a new code is on its way. Check your inbox and spam folder.";
+  } catch (error) {
+    resetEls.finishError.textContent = error.message || "Could not request a new code.";
+  } finally {
+    updateResetResend();
+  }
+});
+resetEls.finishForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  resetEls.finishError.textContent = "";
+  const button = resetEls.finishForm.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    if (state.config?.browserCheckRequired) await ensureBrowserCheckProof("auth");
+    await apiFetch("/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({
+        email: resetEls.email.value.trim(),
+        code: resetEls.code.value.trim(),
+        password: resetEls.password.value,
+        browserProof: state.authBrowserProof,
+      }),
+    });
+    storageRemove("token");
+    state.authToken = "";
+    state.user = null;
+    resetEls.code.value = "";
+    resetEls.password.value = "";
+    resetEls.back.click();
+    showToast("Password updated. Sign in with your new password.");
+  } catch (error) {
+    resetEls.finishError.textContent = error.message || "Could not reset your password.";
+  } finally {
+    resetBrowserCheck("auth");
+    button.disabled = false;
+  }
+});
 
 const submitAuth = async () => {
   els.authError.textContent = "";
@@ -5301,9 +5430,10 @@ const initializeApp = async () => {
   await fetchConfig();
   await fetchMe();
   if (state.user && state.user.emailVerified === false) window.location.hash = newChatUrl();
-  if (isLoginEntryPage() && !state.authToken) {
+  if (isLoginEntryPage() && !state.user) {
     openAccountPanel();
-  } else if (isLoginEntryPage() && state.authToken) {
+    if (getQueryParam("forgot") === "1" && state.config?.passwordResetAvailable) showPasswordReset();
+  } else if (isLoginEntryPage() && state.user) {
     const postLoginRedirect = getPostLoginRedirect();
     if (postLoginRedirect && state.user?.emailVerified !== false) {
       window.location.replace(postLoginRedirect);

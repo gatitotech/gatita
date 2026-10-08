@@ -25,7 +25,7 @@
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css"
     />
-    <link rel="stylesheet" href="styles.css?v=20261007h" />
+    <link rel="stylesheet" href="styles.css?v=20261008reset" />
     <script src="i18n.js?v=20261006a"></script>
   </head>
   <body>
@@ -350,7 +350,28 @@
             <button class="auth-submit" type="submit" data-i18n="account.continue">
               Continue
             </button>
+            <button class="btn login-only hidden" id="forgotPasswordButton" type="button">Forgot password?</button>
           </form>
+
+          <div class="auth-form hidden" id="passwordResetView" style="padding: 16px">
+            <h3>Reset your password</h3>
+            <p class="account-note">Enter the email you use to sign in. If you requested an email change, check the new address for the code.</p>
+            <form id="passwordResetRequestForm">
+              <label class="field"><span>Account email</span><input class="input" id="passwordResetEmail" type="email" autocomplete="email" required /></label>
+              <p class="form-error" id="passwordResetRequestError" role="alert"></p>
+              <button class="auth-submit" type="submit">Send reset code</button>
+            </form>
+            <form class="hidden" id="passwordResetFinishForm">
+              <p class="account-note" id="passwordResetSentNote" role="status"></p>
+              <p class="account-note">Resetting signs out all devices and revokes existing API keys.</p>
+              <label class="field"><span>Six-digit code</span><input class="input" id="passwordResetCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required /></label>
+              <label class="field"><span>New password</span><input class="input" id="passwordResetNewPassword" type="password" autocomplete="new-password" minlength="8" required /></label>
+              <p class="form-error" id="passwordResetFinishError" role="alert"></p>
+              <button class="auth-submit" type="submit">Reset password</button>
+              <button class="btn" id="passwordResetResend" type="button">Send another code</button>
+            </form>
+            <button class="btn" id="passwordResetBack" type="button">Back to sign in</button>
+          </div>
         </div>
 
         <!-- Signed-in view: settings split into categories -->
@@ -1075,6 +1096,6 @@
       defer
     ></script>
     <script src="loader.js?v=20261006a" defer></script>
-    <script src="app.js?v=20261008smtp" defer></script>
+    <script src="app.js?v=20261008reset" defer></script>
   </body>
 </html>
