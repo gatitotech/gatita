@@ -1069,6 +1069,96 @@ const apiFetch = async (path, options = {}) => {
   return json;
 };
 
+const verifyEls = {
+  modal: document.getElementById("verifyModal"),
+  title: document.getElementById("verifyTitle"),
+  intro: document.getElementById("verifyIntro"),
+  close: document.getElementById("verifyClose"),
+  actions: document.getElementById("verifyActions"),
+  target: document.getElementById("verifyTarget"),
+  note: document.getElementById("verifyDeliveryNote"),
+  form: document.getElementById("verifyForm"),
+  code: document.getElementById("verifyCode"),
+  error: document.getElementById("verifyError"),
+  resend: document.getElementById("verifyResend"),
+  changeToggle: document.getElementById("verifyChangeToggle"),
+  changeForm: document.getElementById("verifyChangeForm"),
+  newEmail: document.getElementById("verifyNewEmail"),
+  password: document.getElementById("verifyPassword"),
+  changeError: document.getElementById("verifyChangeError"),
+  signOut: document.getElementById("verifySignOut"),
+  accountChange: document.getElementById("accountChangeEmailButton"),
+};
+
+const showVerifyModal = (delivery = null, changeEmail = false) => {
+  if (!state.user) return;
+  const waitingForCode = state.user.emailVerified === false || Boolean(state.user.pendingEmail);
+  verifyEls.title.textContent = waitingForCode ? "Verify your email" : "Change your email";
+  verifyEls.intro.textContent = waitingForCode
+    ? `Enter the six-digit code sent to ${state.user.pendingEmail || state.user.email}. Your account cannot use Gatita until this email is verified.`
+    : `Your current email is ${state.user.email}. Enter a new address and your password to send a verification code.`;
+  verifyEls.form.classList.toggle("hidden", !waitingForCode);
+  verifyEls.actions.classList.toggle("hidden", !waitingForCode);
+  verifyEls.close.classList.toggle("hidden", waitingForCode);
+  verifyEls.signOut.classList.toggle("hidden", !waitingForCode);
+  verifyEls.note.textContent = delivery && !delivery.sent
+    ? (delivery.error || "A code may already be on its way. You can request another shortly.")
+    : waitingForCode ? "Check your inbox and spam folder. Codes expire after 15 minutes." : "The new address will replace your current email after you verify it.";
+  verifyEls.error.textContent = "";
+  verifyEls.changeError.textContent = "";
+  verifyEls.changeForm.classList.toggle("hidden", !changeEmail);
+  verifyEls.modal.classList.remove("hidden");
+  if (changeEmail) verifyEls.newEmail.focus();
+  else verifyEls.code.focus();
+};
+
+verifyEls.form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  verifyEls.error.textContent = "";
+  try {
+    await apiFetch("/auth/verify-email", { method: "POST", body: JSON.stringify({ code: verifyEls.code.value.trim() }) });
+    verifyEls.modal.classList.add("hidden");
+    window.location.reload();
+  } catch (error) {
+    verifyEls.error.textContent = error.message;
+  }
+});
+verifyEls.resend.addEventListener("click", async () => {
+  verifyEls.error.textContent = "";
+  verifyEls.resend.disabled = true;
+  try {
+    await apiFetch("/auth/resend-verification", { method: "POST", body: "{}" });
+    verifyEls.note.textContent = "A new code was sent. Check your inbox and spam folder.";
+  } catch (error) {
+    verifyEls.error.textContent = error.message;
+  } finally {
+    verifyEls.resend.disabled = false;
+  }
+});
+verifyEls.changeToggle.addEventListener("click", () => {
+  verifyEls.changeForm.classList.toggle("hidden");
+  if (!verifyEls.changeForm.classList.contains("hidden")) verifyEls.newEmail.focus();
+});
+verifyEls.changeForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  verifyEls.changeError.textContent = "";
+  try {
+    const data = await apiFetch("/auth/change-email", {
+      method: "POST",
+      body: JSON.stringify({ email: verifyEls.newEmail.value.trim(), password: verifyEls.password.value }),
+    });
+    state.user.emailVerified = false;
+    state.user.pendingEmail = data.pendingEmail;
+    verifyEls.password.value = "";
+    showVerifyModal(data.emailDelivery);
+  } catch (error) {
+    verifyEls.changeError.textContent = error.message;
+  }
+});
+verifyEls.signOut.addEventListener("click", () => signOut());
+verifyEls.close.addEventListener("click", () => verifyEls.modal.classList.add("hidden"));
+verifyEls.accountChange?.addEventListener("click", () => showVerifyModal(null, true));
+
 const createApiHeaders = (extra = {}) => {
   const headers = {
     "Content-Type": "application/json",
@@ -2756,6 +2846,7 @@ const fetchMe = async () => {
   updateUsage(data.usage);
   updateAccountStatus(data.accountStatus);
   updateAccount();
+  if (state.user && state.user.emailVerified === false) showVerifyModal(data.emailDelivery);
   if (state.user && storageGet("thinking") === "1") {
     els.thinkingToggle.checked = true;
   }
@@ -2776,6 +2867,11 @@ const fetchMe = async () => {
 };
 
 const fetchChats = async () => {
+  if (state.user && state.user.emailVerified === false) {
+    state.chats = [];
+    renderChats();
+    return;
+  }
   const query = state.chatSearch
     ? `?q=${encodeURIComponent(state.chatSearch)}`
     : "";
@@ -3050,6 +3146,10 @@ const regenerateMessage = async (messageId) => {
 };
 
 const sendMessage = async (options = {}) => {
+  if (state.user && state.user.emailVerified === false) {
+    showVerifyModal();
+    return;
+  }
   const text = (options.text ?? els.messageInput.value).trim();
   const draftKeyBeforeSend =
     state.composerDraftKey || composerDraftKeyForCurrentView();
@@ -4403,7 +4503,7 @@ const submitAuth = async () => {
     state.temporaryMode = false;
     state.messages = [];
     const postLoginRedirect = getPostLoginRedirect();
-    if (postLoginRedirect) {
+    if (postLoginRedirect && data.user.emailVerified !== false) {
       window.location.assign(postLoginRedirect);
       return;
     }
@@ -4411,6 +4511,7 @@ const submitAuth = async () => {
     await fetchMe();
     await fetchChats();
     renderMessages();
+    if (data.user.emailVerified === false) showVerifyModal(data.emailDelivery);
     if (data.deletionCanceled) {
       showToast("Account deletion canceled.");
     }
@@ -4421,6 +4522,7 @@ const submitAuth = async () => {
 };
 
 const resetSignedOutState = async () => {
+  verifyEls.modal.classList.add("hidden");
   state.authToken = "";
   state.user = null;
   state.accountStatus = null;
@@ -5198,11 +5300,12 @@ const initializeApp = async () => {
   updateNotificationUi();
   await fetchConfig();
   await fetchMe();
+  if (state.user && state.user.emailVerified === false) window.location.hash = newChatUrl();
   if (isLoginEntryPage() && !state.authToken) {
     openAccountPanel();
   } else if (isLoginEntryPage() && state.authToken) {
     const postLoginRedirect = getPostLoginRedirect();
-    if (postLoginRedirect) {
+    if (postLoginRedirect && state.user?.emailVerified !== false) {
       window.location.replace(postLoginRedirect);
       return;
     }

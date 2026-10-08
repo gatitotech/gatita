@@ -161,6 +161,7 @@
     resumeSubBtn: el("resumeSubBtn"),
     subStatusText: el("subStatusText"),
     authGate: el("apiAuthGate"),
+    verifyGate: el("apiVerifyGate"),
     authForm: el("apiAuthForm"),
     authEmail: el("apiAuthEmail"),
     authPassword: el("apiAuthPassword"),
@@ -546,6 +547,11 @@
     try {
       const data = await apiFetch("/me");
       currentUser = data.user || null;
+      if (currentUser && currentUser.emailVerified === false) {
+        elements.verifyGate?.classList.remove("hidden");
+        document.querySelectorAll(".api-panel, .page-topbar-actions").forEach((node) => node.classList.add("hidden"));
+        return false;
+      }
       currentTier = data.tier || currentTier;
       paintAccount();
       return true;

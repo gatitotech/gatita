@@ -492,6 +492,10 @@
 
               <!-- Security -->
               <section class="account-section" data-account-section="security">
+                <div class="account-row">
+                  <div class="account-row-copy"><strong>Email address</strong><small>Change the address used for your account</small></div>
+                  <button class="btn btn-sm" id="accountChangeEmailButton" type="button">Change email</button>
+                </div>
                 <h3 data-i18n="account.password">Password</h3>
                 <form class="password-form" id="passwordForm">
                   <label class="field">
@@ -642,6 +646,32 @@
       </div>
     </div>
 
+
+    <div class="modal-backdrop hidden" id="verifyModal" role="dialog" aria-modal="true" aria-labelledby="verifyTitle">
+      <section class="sheet">
+        <div class="sheet-head"><h2 id="verifyTitle">Verify your email</h2><button class="icon-btn hidden" id="verifyClose" type="button" aria-label="Close"><i data-lucide="x"></i></button></div>
+        <div class="sheet-body">
+          <p id="verifyIntro">Enter the six-digit code sent to <strong id="verifyTarget"></strong>. Your account cannot use Gatita until this email is verified.</p>
+          <p class="account-note" id="verifyDeliveryNote"></p>
+          <form id="verifyForm">
+            <label class="field"><span>Verification code</span><input id="verifyCode" class="input" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required /></label>
+            <p class="form-error" id="verifyError" role="alert"></p>
+            <button class="btn btn-primary" type="submit">Verify email</button>
+          </form>
+          <div class="action-buttons" id="verifyActions" style="margin-top:12px">
+            <button class="btn" id="verifyResend" type="button">Send a new code</button>
+            <button class="btn" id="verifyChangeToggle" type="button">Wrong or inaccessible email? Change it</button>
+          </div>
+          <form id="verifyChangeForm" class="hidden" style="margin-top:12px">
+            <label class="field"><span>New email</span><input id="verifyNewEmail" class="input" type="email" autocomplete="email" required /></label>
+            <label class="field"><span>Current password</span><input id="verifyPassword" class="input" type="password" autocomplete="current-password" required /></label>
+            <p class="form-error" id="verifyChangeError" role="alert"></p>
+            <button class="btn btn-primary" type="submit">Send code to new email</button>
+          </form>
+          <button class="btn" id="verifySignOut" type="button" style="margin-top:14px">Sign out</button>
+        </div>
+      </section>
+    </div>
 
     <!-- Generic confirm / input / textarea dialog -->
     <div
@@ -1045,6 +1075,6 @@
       defer
     ></script>
     <script src="loader.js?v=20261006a" defer></script>
-    <script src="app.js?v=20261007c" defer></script>
+    <script src="app.js?v=20261008smtp" defer></script>
   </body>
 </html>
