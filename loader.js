@@ -1,18 +1,3 @@
-/**
- * Boot loader — one for every page.
- *
- * The splash is not a timer. It stays up until the page has really finished its
- * work: deferred scripts, the locale, the logo, and whatever the page registers
- * with Loader.critical() (the workspace boot on the chat page, the dashboard's
- * first API round-trip on the API page). Only then does the page reveal itself.
- *
- * If that work fails, or never finishes, the splash gives way to an error sheet
- * assembled from the same parts as the cookie and terms popups — with a retry
- * and a way to keep going in a limited state.
- *
- * There is no wordmark under the mark: it carries a travelling gradient
- * (styles.css: .preloader-sheen / .preloader-edge) instead of a ring.
- */
 (function () {
   "use strict";
 

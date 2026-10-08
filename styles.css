@@ -1245,6 +1245,23 @@ body.sidebar-collapsed .chat-sidebar {
   font-weight: 600;
 }
 
+/* Models that need a paid plan: visible so the upside is obvious, but they
+   cannot be selected - clicking one explains which plan unlocks it. */
+.picker-option.locked {
+  color: var(--muted);
+}
+
+.picker-option.locked:hover {
+  background: var(--surface-2);
+  color: var(--text-strong);
+}
+
+.picker-option.locked .picker-option-tag {
+  border-style: dashed;
+  background: transparent;
+  color: inherit;
+}
+
 /* ---------- Message scroll ---------- */
 .message-scroll {
   flex: 1;
@@ -3338,7 +3355,13 @@ body:not(.app-ready) .sheet {
 
 .page-main {
   min-width: 0;
-  padding: 30px 34px 120px;
+  /* One source of truth for the page gutter. .page-topbar bleeds back out by
+     exactly these values, so the two can never drift apart and add sideways
+     scroll on narrow screens. */
+  --page-pad-x: 34px;
+  --page-pad-y: 30px;
+  --page-topbar-gap: 22px;
+  padding: var(--page-pad-y) var(--page-pad-x) 120px;
 }
 
 .page-main > *:not(.page-topbar) {
@@ -3353,11 +3376,11 @@ body:not(.app-ready) .sheet {
   display: flex;
   align-items: center;
   gap: 12px;
-  width: calc(100% + 68px);
+  width: calc(100% + (var(--page-pad-x, 34px) * 2));
   max-width: none;
   height: 58px;
-  margin: -30px -34px 22px;
-  padding: 0 34px;
+  margin: calc(var(--page-pad-y, 30px) * -1) calc(var(--page-pad-x, 34px) * -1) var(--page-topbar-gap, 22px);
+  padding: 0 var(--page-pad-x, 34px);
   background: rgba(0, 0, 0, 0.78);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -3738,6 +3761,61 @@ body:not(.app-ready) .sheet {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+/* ---------- promo codes + free trials (Plans tab) ---------- */
+.promo-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.promo-input {
+  flex: 1 1 220px;
+  min-width: 0;
+  max-width: 320px;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--field-bg);
+  color: var(--text);
+  font-size: 0.92rem;
+  text-transform: uppercase;
+  transition: border-color var(--dur-fast) ease;
+}
+
+.promo-input::placeholder {
+  color: var(--muted-2);
+  text-transform: none;
+}
+
+.promo-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+#promoStatus,
+#subStatusText {
+  margin: 0 0 14px;
+  font-size: 0.84rem;
+}
+
+#promoStatus.danger {
+  color: var(--danger);
+}
+
+#promoStatus.success {
+  color: #3ecf8e;
+}
+
+.tier-price {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--accent);
 }
 
 .tier-head h3 {
@@ -4932,14 +5010,14 @@ body:not(.app-ready) .center-card {
   }
 
   .page-main {
+    --page-pad-x: 20px;
+    --page-pad-y: 24px;
+    --page-topbar-gap: 18px;
     padding: 24px 20px 130px;
   }
 
-  .page-topbar {
-    width: calc(100% + 40px);
-    margin: -24px -20px 18px;
-    padding: 0 20px;
-  }
+  /* .page-topbar derives its bleed from --page-pad-* now, so there is nothing
+     to override here - that is what used to leave a 6px sideways scroll. */
 }
 
 @media (max-width: 720px) {
@@ -5033,7 +5111,9 @@ body:not(.app-ready) .center-card {
   }
 
   .page-main {
-    padding: 20px 14px 130px;
+    --page-pad-x: 14px;
+    --page-pad-y: 20px;
+    padding: 20px 14px calc(130px + env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -5202,4 +5282,357 @@ body:not(.app-ready) .center-card {
 
 .docs-foot .btn {
   text-decoration: none;
+}
+
+/* ============================================================
+   Phone / touch layer
+   Additive rules only - the desktop layout is untouched. Goals:
+     - never scroll sideways, never need "Request desktop website"
+     - nothing hidden behind the notch, home indicator, or composer
+     - 44px tap targets and 16px fields (iOS zooms the page when a
+       focused input is smaller than that)
+   ============================================================ */
+
+html {
+  /* iOS must not inflate text when the phone is turned sideways. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+@media (max-width: 980px) {
+  /* The desktop collapse rule (body.sidebar-collapsed .ask-app) slides the
+     sidebar's COLUMN down to 0px. On a compact viewport the sidebar is a fixed
+     drawer instead, so the grid must stay a single column - otherwise the
+     conversation is placed in the zero-width track and the chat disappears.
+     This selector matches the desktop rule's specificity and comes later, so
+     it wins while the drawer keeps working. */
+  .ask-app,
+  body.sidebar-collapsed .ask-app,
+  body:not(.sidebar-collapsed) .ask-app {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Chat drawer fallback. On a compact viewport the chat sidebar starts closed
+     even if app.js has not run yet: a first visit stops at the legal gate and
+     returns before initializeApp(), so the JS-side collapse cannot be relied
+     on. Scoped to .chat-sidebar on purpose - the page sidebars (api/legal/docs)
+     are driven by api.js, which never sets data-sidebar-user-toggled, so the
+     same rule would pin them shut when the user opens them. */
+  body:not(.sidebar-collapsed):not([data-sidebar-user-toggled]) .chat-sidebar {
+    transform: translateX(-102%);
+    box-shadow: none;
+  }
+
+  /* Nothing may poke out horizontally on a phone. */
+  .page-main,
+  .docs-main,
+  .legal-main,
+  .messages,
+  .composer-zone {
+    max-width: 100%;
+  }
+
+  /* Once the sidebar is a drawer (<=980px) the fixed account dock floats over
+     the chat, so the composer needs room to sit above it - otherwise the dock
+     covers the composer and the disclaimer on landscape phones and tablets. */
+  .composer-zone {
+    padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+  }
+
+  img,
+  video,
+  canvas,
+  iframe {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Long words and URLs wrap instead of forcing a sideways scroll. */
+  .message-body,
+  .markdown-body,
+  .source-title,
+  .docs-card p,
+  .legal-section p,
+  .legal-section li,
+  .api-key-value {
+    overflow-wrap: anywhere;
+  }
+
+  /* Wide tables scroll inside their card, as they already do on desktop. */
+  .table-wrap {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .table-wrap table {
+    min-width: 520px;
+  }
+
+  /* Sheets/dialogs: full width, clear of the notch and home indicator. */
+  .modal-backdrop {
+    padding: max(12px, env(safe-area-inset-top, 0px)) 12px max(12px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .sheet {
+    max-height: calc(100dvh - 24px);
+  }
+
+  /* Drawers and the sticky topbar clear the notch. */
+  .chat-sidebar,
+  .page-sidebar {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .page-topbar {
+    height: auto;
+    min-height: 58px;
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+}
+
+@media (max-width: 720px) {
+  /* Bottom layers sit above the home indicator, never underneath it. This also
+     has to keep the 44px avatar dock clear: the compact block sets 68px, and a
+     smaller value here (10px) let the dock sit on top of the composer and the
+     disclaimer on landscape phones and small tablets (561-720px wide). */
+  .composer-zone {
+    padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .account-dock {
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .cookie-banner {
+    right: 12px;
+    left: 12px;
+    width: auto;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* A touch more body copy comfort so pinch-zooming is never needed. */
+  body {
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  .toggle-copy small,
+  .fineprint,
+  .docs-foot,
+  .hint,
+  .form-hint {
+    font-size: 0.8rem;
+  }
+
+  .page-topbar h1 {
+    font-size: 1.02rem;
+    /* The title is the flexible member of the row: let it shrink and ellipsize
+       (rather than shoving the action buttons off-screen) on narrow phones. */
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Comfortable targets and non-zooming fields even on devices that do not
+     report a coarse pointer (some Android browsers report "fine"). */
+  .page-nav-item {
+    min-height: 46px;
+  }
+
+  .icon-btn {
+    min-width: 42px;
+    min-height: 42px;
+  }
+
+  .chat-item,
+  .nav-item,
+  .account-nav button {
+    min-height: 44px;
+  }
+
+  .brand {
+    min-height: 44px;
+  }
+
+  .btn-sm,
+  .chart-periods button,
+  .picker-option {
+    min-height: 36px;
+  }
+
+  .btn {
+    min-height: 42px;
+  }
+
+  input,
+  select,
+  textarea,
+  .input,
+  .composer-input {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 560px) {
+  /* On a narrow phone the composer's chips steal most of the row and leave the
+     text field unusably thin (it measured 81px wide at 360px). Give the field
+     its own full-width line and put attach + controls underneath it, the way
+     every phone chat app does. */
+  .composer {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  #messageInput {
+    order: -1;
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
+  .attach-btn {
+    order: 0;
+  }
+
+  .composer-controls {
+    order: 1;
+    margin-left: auto;
+    gap: 4px;
+  }
+
+  .chip-btn-label {
+    max-width: 104px;
+  }
+
+  /* Room for the taller composer plus the account dock. */
+  .composer-zone {
+    padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .messages {
+    padding-bottom: 20px;
+  }
+
+  /* On very narrow phones the icon+label topbar buttons and the page title can
+     no longer share a single row. Collapse the labels to icons; the label text
+     stays in the DOM (visually hidden) so the accessible name is preserved. */
+  .page-topbar-actions .btn-sm {
+    gap: 0;
+    padding: 0 11px;
+    min-width: 40px;
+  }
+
+  .page-topbar-actions .btn-sm > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+}
+
+@media (pointer: coarse) {
+  /* Targets a thumb actually lands on. */
+  .page-nav-item {
+    min-height: 46px;
+  }
+
+  .icon-btn,
+  .account-trigger {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .chat-item,
+  .nav-item,
+  .account-nav button,
+  .tier-card .btn,
+  .row .btn {
+    min-height: 44px;
+  }
+
+  .btn-sm,
+  .chart-periods button,
+  .picker-option {
+    min-height: 36px;
+  }
+
+  .btn {
+    min-height: 44px;
+  }
+
+  /* iOS zooms the whole page when a focused field is under 16px. */
+  input,
+  select,
+  textarea,
+  .input,
+  .composer-input {
+    font-size: 16px;
+  }
+}
+
+/* ==================== email verification ==================== */
+.verify-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.verify-actions .btn {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+
+.verify-delivery-note {
+  margin: 4px 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid rgba(255, 190, 90, 0.28);
+  background: rgba(255, 190, 90, 0.08);
+  font-size: 0.79rem;
+  line-height: 1.5;
+  color: var(--text-soft);
+}
+
+#verifyChangeStep .btn {
+  white-space: nowrap;
+}
+
+.account-row-copy small.verified {
+  color: var(--success, #4cd07d);
+}
+
+.verify-banner {
+  margin-top: 0;
+  margin-bottom: 18px;
+  border-color: rgba(255, 190, 90, 0.28);
+  background: rgba(255, 190, 90, 0.07);
+}
+
+.verify-banner i {
+  flex: none;
+  color: #ffbe5a;
+}
+
+.verify-banner p {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+@media (max-width: 560px) {
+  .verify-actions {
+    flex-direction: column;
+  }
+
+  .verify-actions .btn {
+    width: 100%;
+  }
 }

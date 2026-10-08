@@ -62,53 +62,57 @@
   };
 
   /* Tier limits are read from the API whenever possible; these are the
-     fallbacks used before /tier responds. */
+     fallbacks used before /tier responds. Keep them in sync with
+     src/config/plans.js. */
   const TIER_FALLBACKS = {
     free: {
       id: "free",
       name: "Free",
+      displayName: "Free",
+      priceLabel: "Free",
       dailyRequestLimit: 200,
-      requestsPerMinute: 6,
-      maxTokensPerRequest: 4096,
-      research: false,
+      requestsPerMinute: 3,
+      research: true,
       deepResearch: false,
       agent: false,
       strikeBypass: false,
+      priorityQueue: false,
       sort_order: 0,
     },
     plus: {
       id: "plus",
       name: "Plus",
+      displayName: "Gatita Plus",
+      priceLabel: "$1.99/mo",
       dailyRequestLimit: 2000,
-      requestsPerMinute: 30,
-      maxTokensPerRequest: 8192,
+      requestsPerMinute: 6,
       research: true,
       deepResearch: true,
       agent: true,
       strikeBypass: true,
+      priorityQueue: false,
       sort_order: 1,
     },
     pro: {
       id: "pro",
       name: "Pro",
-      dailyRequestLimit: 10000,
-      requestsPerMinute: 100,
-      maxTokensPerRequest: 32768,
+      displayName: "Gatita Pro",
+      priceLabel: "$2.99/mo",
+      dailyRequestLimit: 20000,
+      requestsPerMinute: 10,
       research: true,
       deepResearch: true,
       agent: true,
       strikeBypass: true,
+      priorityQueue: true,
       sort_order: 2,
     },
   };
 
   const PLAN_MATRIX = [
+    { label: "Price", get: (t) => t.priceLabel || "Free" },
     { label: "Requests / day", get: (t) => formatNumber(t.dailyRequestLimit) },
     { label: "Requests / min", get: (t) => formatNumber(t.requestsPerMinute) },
-    {
-      label: "Max tokens / request",
-      get: (t) => formatNumber(t.maxTokensPerRequest),
-    },
     {
       label: "Research",
       get: (t) => (t.research ? "check" : "x"),
@@ -118,6 +122,10 @@
       get: (t) => (t.deepResearch ? "check" : "x"),
     },
     { label: "Gatita Agent", get: (t) => (t.agent ? "check" : "x") },
+    {
+      label: "Priority queue",
+      get: (t) => (t.priorityQueue ? "check" : "x"),
+    },
     {
       label: "Strike bypass",
       get: (t) => (t.strikeBypass ? "check" : "x"),
@@ -143,7 +151,15 @@
     limitsList: el("limitsList"),
     planCards: el("planCards"),
     planComparisonBody: el("planComparisonBody"),
-    contactUpgradeBtn: el("contactUpgradeBtn"),
+    promoCodeInput: el("promoCodeInput"),
+    applyPromoBtn: el("applyPromoBtn"),
+    claimTrialBtn: el("claimTrialBtn"),
+    promoStatus: el("promoStatus"),
+    billingRow: el("billingRow"),
+    manageBillingBtn: el("manageBillingBtn"),
+    cancelSubBtn: el("cancelSubBtn"),
+    resumeSubBtn: el("resumeSubBtn"),
+    subStatusText: el("subStatusText"),
     authGate: el("apiAuthGate"),
     authForm: el("apiAuthForm"),
     authEmail: el("apiAuthEmail"),
@@ -158,6 +174,7 @@
     accountPanelAvatar: el("accountPanelAvatar"),
     accountModalName: el("accountModalName"),
     accountModalEmail: el("accountModalEmail"),
+    verifyBanner: el("verifyBanner"),
     dockTier: el("dockTier"),
     dockKeyCount: el("dockKeyCount"),
     accountSignOutButton: el("accountSignOutButton"),
@@ -188,6 +205,13 @@
   };
 
   const icons = () => window.iconRefresh?.() ?? window.lucide?.createIcons?.();
+
+  /* Dynamic strings go through the same i18n lookup the chat page uses; the
+     fallback keeps the dashboard readable if the locale has not caught up. */
+  const t = (key, fallback) => {
+    const value = window.i18n ? window.i18n(key) : "";
+    return value && value !== key ? value : fallback;
+  };
 
   const formatNumber = (num) => {
     const value = Number(num || 0);
@@ -229,6 +253,195 @@
   });
 
   let stateTier = null;
+  let billingState = false;
+
+  /* Stripe checkout + billing portal. Both come from the same plan config the
+     API enforces, so the price on the card is the price you are charged. */
+  async function startCheckout(tierId, button) {
+    if (!tierId) return;
+    if (button) button.disabled = true;
+    try {
+      const promoCode = enteredPromoCode();
+      const data = await apiFetch("/stripe/checkout", {
+        method: "POST",
+        body: JSON.stringify({ tierId, promoCode, returnUrl: window.location.href }),
+      });
+      if (data?.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+        return;
+      }
+      throw new Error(data?.message || "Could not start checkout.");
+    } catch (error) {
+      showToast(error.message || "Could not start checkout.", "error");
+      if (button) button.disabled = false;
+    }
+  }
+
+  async function openBillingPortal(button) {
+    if (button) button.disabled = true;
+    try {
+      const data = await apiFetch("/stripe/portal", {
+        method: "POST",
+        body: JSON.stringify({ returnUrl: window.location.href }),
+      });
+      if (data?.url) {
+        window.location.href = data.url;
+        return;
+      }
+      throw new Error(data?.message || "Billing portal is unavailable.");
+    } catch (error) {
+      showToast(error.message || "Billing portal is unavailable.", "error");
+      if (button) button.disabled = false;
+    }
+  }
+
+  /* ---------- promo codes + free trials ---------- */
+  let subscriptionState = null;
+
+  const setPromoStatus = (message, tone = "") => {
+    const status = elements.promoStatus;
+    if (!status) return;
+    status.textContent = message || "";
+    status.classList.toggle("hidden", !message);
+    status.classList.toggle("danger", tone === "error");
+    status.classList.toggle("success", tone === "ok");
+  };
+
+  const enteredPromoCode = () => (elements.promoCodeInput?.value || "").trim();
+
+  /* Check the code against the API before checkout so the user sees the
+     discount instead of finding out on Stripe's page. */
+  async function applyPromoCode() {
+    const code = enteredPromoCode();
+    if (!code) {
+      setPromoStatus("");
+      return;
+    }
+    if (elements.applyPromoBtn) elements.applyPromoBtn.disabled = true;
+    try {
+      const data = await apiFetch("/stripe/promo/validate", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      });
+      const detail = data.description ? ` - ${data.description}` : "";
+      setPromoStatus(
+        `${t("api.plan.promoValid", "Code applied - it will be used at checkout.")}${detail}`,
+        "ok",
+      );
+    } catch (error) {
+      setPromoStatus(
+        error.message || t("api.plan.promoInvalid", "That code cannot be used."),
+        "error",
+      );
+    } finally {
+      if (elements.applyPromoBtn) elements.applyPromoBtn.disabled = false;
+    }
+  }
+
+  /* The server decides whether this account finds a trial code (rare, gated by
+     account age and past subscriptions), so failure here is a normal outcome. */
+  async function claimTrialCode() {
+    const button = elements.claimTrialBtn;
+    if (button) button.disabled = true;
+    try {
+      const data = await apiFetch("/stripe/promo/claim", {
+        method: "POST",
+        body: "{}",
+      });
+      const message = t(
+        "api.plan.trialWon",
+        "You got a free month! Code added - upgrade to activate it.",
+      );
+      if (elements.promoCodeInput) elements.promoCodeInput.value = data.code || "";
+      setPromoStatus(message, "ok");
+      showToast(message, "success");
+    } catch (error) {
+      setPromoStatus(
+        error.message ||
+          t(
+            "api.plan.trialUnavailable",
+            "No free trial available for this account right now.",
+          ),
+        "error",
+      );
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  /* ---------- subscription (cancel / resume) ---------- */
+  async function loadSubscription() {
+    if (!billingState) {
+      subscriptionState = null;
+      renderSubscriptionControls();
+      return;
+    }
+    subscriptionState = await apiFetch("/stripe/subscription").catch(() => null);
+    renderSubscriptionControls();
+  }
+
+  function renderSubscriptionControls() {
+    const state = subscriptionState;
+    const show = Boolean(billingState && state?.subscribed);
+    const cancelBtn = elements.cancelSubBtn;
+    const resumeBtn = elements.resumeSubBtn;
+    const status = elements.subStatusText;
+
+    if (cancelBtn) {
+      cancelBtn.classList.toggle("hidden", !show || Boolean(state.cancelAtPeriodEnd));
+    }
+    if (resumeBtn) {
+      resumeBtn.classList.toggle("hidden", !show || !state.cancelAtPeriodEnd);
+    }
+    if (status) {
+      const date = state?.cancelAtPeriodEnd
+        ? state.cancelAt || state.currentPeriodEnd
+        : state?.currentPeriodEnd;
+      const label = state?.cancelAtPeriodEnd
+        ? t("api.plan.cancelsOn", "Cancels on")
+        : t("api.plan.renewsOn", "Renews on");
+      status.textContent = show && date ? `${label} ${formatDate(date)}` : "";
+      status.classList.toggle("hidden", !status.textContent);
+    }
+  }
+
+  async function setSubscriptionAction(action, button) {
+    const isCancel = action === "cancel";
+    if (
+      isCancel &&
+      !window.confirm(
+        t(
+          "api.plan.cancelConfirm",
+          "Cancel your subscription? Your plan stays active until the end of the billing period.",
+        ),
+      )
+    ) {
+      return;
+    }
+    if (button) button.disabled = true;
+    try {
+      const data = await apiFetch("/stripe/subscription", {
+        method: "POST",
+        body: JSON.stringify({ action }),
+      });
+      subscriptionState = { ...(subscriptionState || {}), subscribed: true, ...data };
+      renderSubscriptionControls();
+      showToast(
+        isCancel
+          ? t(
+              "api.plan.subCancelled",
+              "Subscription will cancel at the end of the billing period.",
+            )
+          : t("api.plan.subResumed", "Subscription resumed."),
+        "success",
+      );
+      loadTier().catch(() => {});
+    } catch (error) {
+      showToast(error.message || "Could not update the subscription.", "error");
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
 
   const showToast = (message, tone = "info") => {
     const toast = elements.toast;
@@ -411,6 +624,7 @@
       bootFailure(error, null, false),
     );
     if (!data) return;
+    overviewState = data;
     const usage = data.usage || {};
     el("statTotalKeys").textContent = formatNumber(keys.length);
     el("statTodayRequests").textContent = formatNumber(usage.today?.requests || 0);
@@ -421,6 +635,7 @@
     renderRequestsChart(data.dailyStats || []);
     renderModelsChart(data.modelUsage || []);
     renderRecentActivity(data.dailyStats || []);
+    renderUsage();
   }
 
   function renderRequestsChart(dailyStats) {
@@ -868,16 +1083,49 @@
   }
 
   /* ---------- usage & limits ---------- */
+  let overviewState = null;
+
   async function loadTier() {
     const data = await apiFetch("/tier").catch((error) =>
       bootFailure(error, null, false),
     );
     if (!data) return;
     currentTier = data.tier || currentTier;
-    stateTier = data.tierConfig || null;
+    stateTier = data.tierConfig || data.config || data.plan || null;
+    billingState = Boolean(data.hasBilling);
+    if (elements.billingRow) {
+      elements.billingRow.classList.toggle("hidden", !billingState);
+    }
+    loadSubscription().catch(() => {});
     renderTierStatus(data);
-    renderUsage(data);
+    renderUsage();
     renderPlans();
+  }
+
+  /* Stripe redirects back with ?checkout=success (or cancelled); tell the user
+     what happened and clear the query string. */
+  function handleCheckoutRedirect() {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get("checkout");
+    const planId = params.get("tier");
+    if (!status) return;
+    params.delete("checkout");
+    params.delete("tier");
+    params.delete("session_id");
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`,
+    );
+
+    if (status === "success") {
+      showToast("Plan active - thanks for subscribing!", "success");
+      if (planId) currentTier = planId;
+      loadTier().catch(() => {});
+    } else if (status === "cancelled") {
+      showToast("Checkout cancelled - nothing was charged.");
+    }
   }
 
   function renderTierStatus(data) {
@@ -898,7 +1146,10 @@
     const count = el("strikeCount");
     if (count) count.textContent = String(strikeCount);
     const tierDisplay = el("currentTierDisplay");
-    if (tierDisplay) tierDisplay.textContent = tierConfig().name;
+    if (tierDisplay) {
+      const config = tierConfig();
+      tierDisplay.textContent = config.displayName || config.name;
+    }
     const bypassEl = el("strikeBypassStatus");
     if (bypassEl) {
       bypassEl.textContent = bypass ? "Enabled" : "Not available";
@@ -906,11 +1157,19 @@
     }
   }
 
-  function renderUsage(data) {
+  function renderUsage(input) {
     const tier = tierConfig();
+    const data = input || overviewState || {};
+    const usage = data.usage || {};
     const realtime = data.realtime || {};
-    const dailyUsed = Number(data.dailyUsed ?? realtime.dailyUsed ?? 0);
-    const minuteUsed = Number(data.currentMinute ?? realtime.currentMinute ?? 0);
+    const dailyUsed = Number(
+      data.dailyUsed ?? realtime.dailyUsed ?? usage.today?.requests ?? 0,
+    );
+    const minuteUsed = Number(
+      data.currentMinute ?? realtime.currentMinute ?? 0,
+    );
+    const monthTokens = Number(usage.month?.tokens || 0);
+    const monthCost = Number(usage.month?.estimatedCost || 0);
 
     const meters = [
       {
@@ -924,12 +1183,6 @@
         used: minuteUsed,
         max: Number(data.minuteLimit ?? tier.requestsPerMinute),
         foot: "resets every 60 seconds",
-      },
-      {
-        title: "Max tokens / request",
-        used: Number(data.tokenLimit ?? tier.maxTokensPerRequest),
-        max: Number(data.tokenLimit ?? tier.maxTokensPerRequest),
-        foot: "per request ceiling",
       },
     ];
 
@@ -958,12 +1211,16 @@
 
     if (elements.limitsList) {
       const rows = [
+        ["Price", tier.priceLabel || "Free"],
         ["Requests per day", formatNumber(tier.dailyRequestLimit)],
         ["Requests per minute", formatNumber(tier.requestsPerMinute)],
-        ["Max tokens per request", formatNumber(tier.maxTokensPerRequest)],
+        ["Token limit", "None"],
         ["Research mode", tier.research ? "Included" : "Not included"],
         ["Deep research", tier.deepResearch ? "Included" : "Not included"],
         ["Gatita Agent", tier.agent ? "Included" : "Not included"],
+        ["Priority in queue", tier.priorityQueue ? "Included" : "Not included"],
+        ["Tokens used (30d)", formatNumber(monthTokens)],
+        ["Estimated value (30d)", `$${monthCost.toFixed(2)}`],
       ];
       elements.limitsList.innerHTML = rows
         .map(
@@ -984,28 +1241,32 @@
       elements.planCards.innerHTML = tiers
         .map((tier) => {
           const isCurrent = tier.id === currentId;
-          const isUpgrade = tier.sort_order > (TIER_FALLBACKS[currentId]?.sort_order ?? 0);
+          const isUpgrade = (tier.sort_order ?? 0) > (TIER_FALLBACKS[currentId]?.sort_order ?? 0);
           const badge = isCurrent
             ? '<span class="pill pill-accent">Current</span>'
             : isUpgrade
               ? '<span class="pill">Upgrade</span>'
               : "";
           return `<article class="tier-card ${isCurrent ? "current" : ""} ${isUpgrade ? "upgrade" : ""}">
-            <div class="tier-head"><h3>${escapeHtml(tier.name)}</h3>${badge}</div>
+            <div class="tier-head"><h3>${escapeHtml(tier.displayName || tier.name)}</h3>${badge}</div>
+            <p class="tier-price">${escapeHtml(tier.priceLabel || "Free")}</p>
             <ul class="tier-features">
               <li><i data-lucide="check"></i>${escapeHtml(formatNumber(tier.dailyRequestLimit))} requests / day</li>
               <li><i data-lucide="check"></i>${escapeHtml(formatNumber(tier.requestsPerMinute))} requests / min</li>
-              <li><i data-lucide="check"></i>${escapeHtml(formatNumber(tier.maxTokensPerRequest))} max tokens</li>
+              <li><i data-lucide="check"></i>No token limit</li>
               ${tier.research ? '<li><i data-lucide="check"></i>Research mode</li>' : ""}
               ${tier.deepResearch ? '<li><i data-lucide="check"></i>Deep research</li>' : ""}
               ${tier.agent ? '<li><i data-lucide="check"></i>Gatita Agent</li>' : ""}
+              ${tier.priorityQueue ? '<li><i data-lucide="check"></i>Priority in queue</li>' : ""}
               ${tier.strikeBypass ? '<li><i data-lucide="check"></i>Strike bypass</li>' : ""}
             </ul>
             ${
               isCurrent
-                ? '<button class="btn" disabled>Current plan</button>'
+                ? billingState
+                  ? '<button class="btn" data-manage-billing>Manage billing</button>'
+                  : '<button class="btn" disabled>Current plan</button>'
                 : isUpgrade
-                  ? `<button class="btn btn-primary" data-upgrade-tier="${escapeHtml(tier.id)}">Upgrade to ${escapeHtml(tier.name)}</button>`
+                  ? `<button class="btn btn-primary" data-upgrade-tier="${escapeHtml(tier.id)}">Upgrade to ${escapeHtml(tier.displayName || tier.name)}</button>`
                   : '<button class="btn" disabled>Not available</button>'
             }
           </article>`;
@@ -1013,9 +1274,10 @@
         .join("");
 
       elements.planCards.querySelectorAll("[data-upgrade-tier]").forEach((button) => {
-        button.addEventListener("click", () =>
-          showToast(`Upgrades to ${button.dataset.upgradeTier} open on support.`),
-        );
+        button.addEventListener("click", () => startCheckout(button.dataset.upgradeTier, button));
+      });
+      elements.planCards.querySelectorAll("[data-manage-billing]").forEach((button) => {
+        button.addEventListener("click", () => openBillingPortal(button));
       });
     }
 
@@ -1109,6 +1371,12 @@
     });
     if (elements.accountModalEmail) {
       elements.accountModalEmail.textContent = currentUser.email || "";
+    }
+    if (elements.verifyBanner) {
+      elements.verifyBanner.classList.toggle(
+        "hidden",
+        Boolean(currentUser.emailVerified),
+      );
     }
     if (elements.accountTier) elements.accountTier.textContent = tierName;
     if (elements.dockTier) elements.dockTier.textContent = tierName;
@@ -1257,6 +1525,25 @@
     [elements.newKeyBtn, elements.createFirstKeyBtn].forEach((button) => {
       button?.addEventListener("click", openCreateKeyModal);
     });
+    elements.manageBillingBtn?.addEventListener("click", () =>
+      openBillingPortal(elements.manageBillingBtn),
+    );
+    elements.applyPromoBtn?.addEventListener("click", applyPromoCode);
+    elements.claimTrialBtn?.addEventListener("click", claimTrialCode);
+    elements.promoCodeInput?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        applyPromoCode();
+      }
+    });
+    elements.promoCodeInput?.addEventListener("input", () => setPromoStatus(""));
+    elements.cancelSubBtn?.addEventListener("click", () =>
+      setSubscriptionAction("cancel", elements.cancelSubBtn),
+    );
+    elements.resumeSubBtn?.addEventListener("click", () =>
+      setSubscriptionAction("resume", elements.resumeSubBtn),
+    );
+
     elements.createKeyModalClose?.addEventListener("click", closeCreateKeyModal);
     elements.createKeyCancel?.addEventListener("click", closeCreateKeyModal);
     elements.createKeyForm?.addEventListener("submit", handleCreateKey);
@@ -1296,10 +1583,6 @@
       }
       closeAccountPanel();
     });
-
-    elements.contactUpgradeBtn?.addEventListener("click", () =>
-      window.open("https://discord.gg/gatita", "_blank", "noopener"),
-    );
 
     elements.testKeyButton?.addEventListener("click", testKey);
     elements.testKeyInput?.addEventListener("keydown", (event) => {
@@ -1351,6 +1634,7 @@
 
       await Promise.all([loadApiKeys(), loadTier()]);
       await loadOverview();
+      handleCheckoutRedirect();
       switchTab(currentTabFromHash());
       icons();
       setInterval(pollRealtime, 8000);

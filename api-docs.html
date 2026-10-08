@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
     <title data-i18n="Gatita API reference"></title>
     <meta
@@ -20,7 +20,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20261006a" />
+    <link rel="stylesheet" href="styles.css?v=20261007h" />
     <script src="i18n.js?v=20261006a"></script>
   </head>
   <body>
@@ -148,7 +148,7 @@
 <pre><code>{
   "object": "list",
   "data": [
-    { "id": "gatita-6.7", "object": "model", "owned_by": "gatita" }
+    { "id": "gatita-7.1-mini", "object": "model", "owned_by": "gatita" }
   ]
 }</code></pre>
           </div>
@@ -175,7 +175,7 @@
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer gatita_your_key_here" \
   -d '{
-    "model": "gatita-6.7",
+    "model": "gatita-7.1-mini",
     "messages": [{ "role": "user", "content": "Say hello in one sentence." }]
   }'</code></pre>
           </div>
@@ -192,7 +192,7 @@
     Authorization: `Bearer ${process.env.GATITA_API_KEY}`,
   },
   body: JSON.stringify({
-    model: "gatita-6.7",
+    model: "gatita-7.1-mini",
     messages: [{ role: "user", content: "Say hello in one sentence." }],
   }),
 });
@@ -247,7 +247,7 @@ console.log(data.choices[0].message.content);</code></pre>
                   <td data-i18n-html="&lt;code&gt;max_tokens&lt;/code&gt;"></td>
                   <td data-i18n="integer"></td>
                   <td>—</td>
-                  <td data-i18n="Generation ceiling, capped by your plan."></td>
+                  <td data-i18n="Optional generation ceiling for this request. Plans have no token limit."></td>
                 </tr>
                 <tr>
                   <td data-i18n-html="&lt;code&gt;stream&lt;/code&gt;"></td>
@@ -269,7 +269,7 @@ console.log(data.choices[0].message.content);</code></pre>
   "id": "chatcmpl-8f3k2n...",
   "object": "chat.completion",
   "created": 1750000000,
-  "model": "gatita-6.7",
+  "model": "gatita-7.1-mini",
   "choices": [
     {
       "index": 0,
@@ -301,7 +301,7 @@ console.log(data.choices[0].message.content);</code></pre>
     Authorization: `Bearer ${process.env.GATITA_API_KEY}`,
   },
   body: JSON.stringify({
-    model: "gatita-6.7",
+    model: "gatita-7.1-mini",
     messages: [{ role: "user", content: "Tell me a short story." }],
     stream: true,
   }),
@@ -500,19 +500,20 @@ data: [DONE]</code></pre>
               <thead>
                 <tr>
                   <th data-i18n="Plan"></th>
+                  <th data-i18n="Price"></th>
                   <th data-i18n="Requests / day"></th>
                   <th data-i18n="Requests / min"></th>
-                  <th data-i18n="Max tokens / request"></th>
                 </tr>
               </thead>
               <tbody>
-                <tr><td data-i18n="Free"></td><td>200</td><td>6</td><td>4,096</td></tr>
-                <tr><td data-i18n="Plus"></td><td>2,000</td><td>30</td><td>8,192</td></tr>
-                <tr><td data-i18n="Pro"></td><td>10,000</td><td>100</td><td>32,768</td></tr>
+                <tr><td data-i18n="Free"></td><td data-i18n="Free"></td><td>200</td><td>3</td></tr>
+                <tr><td data-i18n="Plus"></td><td>$1.99/mo</td><td>2,000</td><td>6</td></tr>
+                <tr><td data-i18n="Pro"></td><td>$2.99/mo</td><td>20,000</td><td>10</td></tr>
               </tbody>
             </table>
           </div>
           <p data-i18n="On a 429, back off and retry. The daily counter resets at midnight UTC; the per-minute counter rolls every 60 seconds."></p>
+          <p data-i18n="Have a coupon code? Enter it on the dashboard's Plans tab before upgrading - it is applied at checkout. Free-month trials are handed out rarely and only work on the account they were issued to."></p>
         </section>
 
         <footer class="docs-foot">

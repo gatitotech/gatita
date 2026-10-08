@@ -175,6 +175,9 @@ const els = {
   accountModalEmail: document.getElementById("accountModalEmail"),
   accountMinuteLimit: document.getElementById("accountMinuteLimit"),
   accountDeepLimit: document.getElementById("accountDeepLimit"),
+  accountPlan: document.getElementById("accountPlan"),
+  accountPlanHint: document.getElementById("accountPlanHint"),
+  accountUpgradeButton: document.getElementById("accountUpgradeButton"),
   notificationsToggle: document.getElementById("notificationsToggle"),
   accountSignOutButton: document.getElementById("accountSignOutButton"),
   passwordForm: document.getElementById("passwordForm"),
@@ -208,6 +211,24 @@ const els = {
   authDisplayName: document.getElementById("authDisplayName"),
   authPassword: document.getElementById("authPassword"),
   authError: document.getElementById("authError"),
+  verifyModal: document.getElementById("verifyModal"),
+  verifyEmailTarget: document.getElementById("verifyEmailTarget"),
+  verifyDeliveryNote: document.getElementById("verifyDeliveryNote"),
+  verifyCodeStep: document.getElementById("verifyCodeStep"),
+  verifyCodeInput: document.getElementById("verifyCodeInput"),
+  verifyError: document.getElementById("verifyError"),
+  verifySubmitButton: document.getElementById("verifySubmitButton"),
+  verifyResendButton: document.getElementById("verifyResendButton"),
+  verifyChangeEmailButton: document.getElementById("verifyChangeEmailButton"),
+  verifyChangeStep: document.getElementById("verifyChangeStep"),
+  verifyNewEmail: document.getElementById("verifyNewEmail"),
+  verifyNewEmailPassword: document.getElementById("verifyNewEmailPassword"),
+  verifyChangeError: document.getElementById("verifyChangeError"),
+  verifyChangeSubmit: document.getElementById("verifyChangeSubmit"),
+  verifyChangeBack: document.getElementById("verifyChangeBack"),
+  accountEmailValue: document.getElementById("accountEmailValue"),
+  accountEmailStatus: document.getElementById("accountEmailStatus"),
+  accountChangeEmailButton: document.getElementById("accountChangeEmailButton"),
   toast: document.getElementById("toast"),
   browserCheckStatus: document.getElementById("browserCheckStatus"),
   authBrowserCheckStatus: document.getElementById("authBrowserCheckStatus"),
@@ -1137,11 +1158,28 @@ const streamApi = async (path, payload, onEvent, options = {}) => {
   if (buffer.trim()) parseSseChunk(`${buffer}\n\n`, onEvent);
 };
 
+/* The plan the signed-in viewer is on. Chat and the API share one plan
+   config, so whatever the backend reports here is what the API enforces too. */
+const currentPlan = () => state.config?.plan || null;
+
+const planLabel = () => {
+  const plan = currentPlan();
+  if (!plan) return "Free";
+  return plan.displayName || plan.name || "Free";
+};
+
+const planFeature = (key) => Boolean(state.config?.features?.[key]);
+
 const updateUsage = (usage) => {
   if (!usage) return;
   state.usage = usage;
   if (state.user) {
-    els.usageText.textContent = "Free";
+    // A plan change (checkout finished, cancelled) shows up on the next
+    // response - reload capabilities so the picker and toggles follow it.
+    if (usage.planId && state.config?.plan?.id && usage.planId !== state.config.plan.id) {
+      fetchConfig().catch(() => {});
+    }
+    els.usageText.textContent = planLabel();
   } else if (usage.dailyLimit) {
     els.usageText.textContent = `${usage.dailyRemaining}/${usage.dailyLimit} guest messages left`;
   } else {
@@ -1276,6 +1314,7 @@ const renderAccountWindow = () => {
   const minuteLimit =
     usage.minuteLimit ?? state.config?.limits?.perMinute ?? "-";
   const deep = usage.research?.deep || {};
+  const deepAvailable = deep.available !== false && planFeature("deepResearch");
   const deepRemaining =
     deep.dailyRemaining ?? state.config?.limits?.deepResearchDaily ?? "-";
   const deepLimit =
@@ -1285,9 +1324,21 @@ const renderAccountWindow = () => {
     state.user?.displayName || state.user?.email || "Guest";
   els.accountModalEmail.textContent = state.user?.email || "Signed out";
   els.accountMinuteLimit.textContent = `${minuteRemaining}/${minuteLimit} left this minute`;
-  els.accountDeepLimit.textContent = state.user
-    ? `${deepRemaining}/${deepLimit} left today`
-    : "Sign in required";
+  if (els.accountPlan) els.accountPlan.textContent = state.user ? planLabel() : "Guest";
+  if (els.accountPlanHint) {
+    const plan = currentPlan();
+    els.accountPlanHint.textContent = plan && plan.priceCents
+      ? `${plan.displayName} · ${plan.priceLabel}`
+      : "Free plan · upgrade for more";
+  }
+  if (els.accountUpgradeButton) {
+    els.accountUpgradeButton.classList.toggle("hidden", !state.user);
+  }
+  els.accountDeepLimit.textContent = !state.user
+    ? "Sign in required"
+    : deepAvailable
+      ? `${deepRemaining}/${deepLimit} left today`
+      : `${deep.requiredPlanName || "Gatita Plus"} only`;
   const deletionScheduledAt = Number(state.user?.deletionScheduledAt || 0);
   if (els.accountDeletionStatus) {
     els.accountDeletionStatus.classList.toggle("hidden", !deletionScheduledAt);
@@ -1338,9 +1389,25 @@ const updateAccount = () => {
     setGuestLockedToggle(els.deepResearchToggle, true);
     setGuestLockedToggle(els.agenticToggle, true);
   }
+  // Reflect the account email + verification state in the settings view.
+  if (els.accountEmailValue) {
+    els.accountEmailValue.textContent =
+      (state.user && (state.user.pendingEmail || state.user.email)) || "—";
+  }
+  if (els.accountEmailStatus) {
+    const verified = Boolean(state.user?.emailVerified);
+    const pending = Boolean(state.user?.pendingEmail);
+    els.accountEmailStatus.textContent = pending
+      ? "Pending — confirm the code sent to your new email"
+      : verified
+        ? "Verified"
+        : "Not verified";
+    els.accountEmailStatus.classList.toggle("verified", verified);
+  }
   // Switch the dock between the signed-out sign-in form and settings.
   els.accountAuthView?.classList.toggle("hidden", Boolean(state.user));
   els.accountSettingsView?.classList.toggle("hidden", !state.user);
+  updateNativeToolControls();
   renderAccountWindow();
   renderUpdates();
   updateSettingsSummary();
@@ -1358,12 +1425,22 @@ const renderSelects = () => {
   const savedDeepResearch = storageGet("deep_research") === "1";
   const savedAgenticChat = storageGet("agentic_chat") === "1";
 
-  els.modelSelect.innerHTML = models
-    .map(
-      (model) =>
-        `<option value="${escapeHtml(model.id)}">${escapeHtml(model.name)}</option>`,
-    )
-    .join("");
+  // Models a higher plan unlocks are listed as disabled entries so the picker
+  // shows the upside instead of hiding it.
+  const lockedModels = state.config?.lockedModels || [];
+  els.modelSelect.innerHTML =
+    models
+      .map(
+        (model) =>
+          `<option value="${escapeHtml(model.id)}">${escapeHtml(model.name)}</option>`,
+      )
+      .join("") +
+    lockedModels
+      .map(
+        (model) =>
+          `<option value="${escapeHtml(model.id)}" disabled>${escapeHtml(model.name)} — ${escapeHtml(model.requiredPlanName || "Gatita Plus")}</option>`,
+      )
+      .join("");
   els.personalitySelect.innerHTML = personalities
     .map(
       (personality) =>
@@ -1390,23 +1467,48 @@ const renderSelects = () => {
   updateSettingsSummary();
 };
 
+/* Capability toggles follow the plan, not the model: research is on every
+   signed-in plan, deep research and Agent are paid features. The backend
+   enforces the same rules, this only keeps the UI honest. */
 const updateNativeToolControls = () => {
-  const selectedModel = (state.config?.models || []).find(
-    (model) => model.id === els.modelSelect?.value,
-  );
-  const available = Boolean(state.user && selectedModel?.nativeTools);
-  document.querySelectorAll(".research-control").forEach((control) => {
-    control.classList.toggle("disabled", !available);
-    control.title = available
-      ? "Native web and sandbox tools are available for this model"
-      : "Native tools require a signed-in Gatita 6.7 chat";
-    control.setAttribute("aria-disabled", available ? "false" : "true");
-    const input = control.querySelector("input");
-    if (input) {
-      input.disabled = !available;
-      if (!available) input.checked = false;
+  const signedIn = Boolean(state.user);
+  const setAvailability = (input, available, hint) => {
+    if (!input) return;
+    const control = input.closest(".thinking-toggle");
+    input.disabled = !available;
+    if (control) {
+      control.classList.toggle("disabled", !available);
+      control.title = hint;
+      control.setAttribute("aria-disabled", available ? "false" : "true");
     }
-  });
+    if (!available) input.checked = false;
+  };
+
+  setAvailability(
+    els.researchToggle,
+    signedIn && planFeature("research"),
+    signedIn
+      ? "Search the web for live sources"
+      : "Sign in to use research",
+  );
+  setAvailability(
+    els.deepResearchToggle,
+    signedIn && planFeature("deepResearch"),
+    signedIn
+      ? planFeature("deepResearch")
+        ? "Longer, multi-source investigation"
+        : "Deep research needs Gatita Plus"
+      : "Sign in to use deep research",
+  );
+  setAvailability(
+    els.agenticToggle,
+    signedIn && planFeature("agent"),
+    signedIn
+      ? planFeature("agent")
+        ? "Gatita decides when to think and research"
+        : "Gatita Agent needs Gatita Plus"
+      : "Sign in to use Gatita Agent",
+  );
 };
 
 const updateSettingsSummary = () => {
@@ -1529,14 +1631,21 @@ const renderPickerOptions = (kind) => {
   menu.innerHTML = items
     .map((option) => {
       const active = option.value === select.value;
+      const locked = isModel && option.disabled;
       const meta = isModel ? getModelMeta(option.value) : null;
-      const tag =
-        isModel && meta?.nativeTools
+      const planName = locked
+        ? (state.config?.lockedModels || []).find((m) => m.id === option.value)
+            ?.requiredPlanName || "Gatita Plus"
+        : "";
+      const tag = locked
+        ? `<span class="picker-option-tag picker-option-tag-locked">${escapeHtml(planName.replace(/^Gatita\s+/, ""))}</span>`
+        : isModel && meta?.nativeTools
           ? '<span class="picker-option-tag">tools</span>'
           : "";
       return `
-        <button class="picker-option ${active ? "active" : ""}" type="button" role="option"
+        <button class="picker-option ${active ? "active" : ""} ${locked ? "locked" : ""}" type="button" role="option"
                 aria-selected="${active ? "true" : "false"}"
+                ${locked ? `aria-disabled="true" data-locked-plan="${escapeHtml(planName)}"` : ""}
                 data-custom-select-value="${escapeHtml(option.value)}">
           <span class="picker-option-label">${escapeHtml(option.textContent)}</span>
           ${tag}
@@ -1561,6 +1670,10 @@ const bindCustomSelect = (kind) => {
   menu?.addEventListener("click", (event) => {
     const option = event.target.closest("[data-custom-select-value]");
     if (!option) return;
+    if (option.dataset.lockedPlan) {
+      showToast(`That model needs ${option.dataset.lockedPlan}. Open Account to upgrade.`);
+      return;
+    }
     chooseCustomSelectValue(kind, option.dataset.customSelectValue || "");
   });
 };
@@ -2693,9 +2806,15 @@ const fetchMe = async () => {
     els.researchToggle.checked = true;
   }
   updateSettingsSummary();
+  maybeRequireEmailVerification();
 };
 
 const fetchChats = async () => {
+  if (state.user && !state.user.emailVerified) {
+    state.chats = [];
+    renderChats();
+    return;
+  }
   const query = state.chatSearch
     ? `?q=${encodeURIComponent(state.chatSearch)}`
     : "";
@@ -2984,6 +3103,13 @@ const sendMessage = async (options = {}) => {
     showToast(
       `Chat access is paused for about ${formatDuration(Number(state.accountStatus.chatBlockedUntil) - Date.now())}.`,
     );
+    return;
+  }
+  if (state.user && !state.user.emailVerified) {
+    showVerifyModal({
+      email: state.user.pendingEmail || state.user.email,
+      emailServiceConfigured: state.config?.emailServiceConfigured,
+    });
     return;
   }
   if (
@@ -4285,6 +4411,161 @@ const setAuthMode = (mode) => {
     mode === "login" ? "current-password" : "new-password";
 };
 
+// ---- email verification ----
+// Accounts that have not confirmed their email can sign in but cannot use
+// Gatita. This modal drives the confirm / resend / change-email flow.
+const verifyState = { pendingEmail: "" };
+
+const setVerifyStep = (step) => {
+  els.verifyCodeStep?.classList.toggle("hidden", step !== "code");
+  els.verifyChangeStep?.classList.toggle("hidden", step !== "change");
+};
+
+const showVerifyModal = ({
+  email = "",
+  emailServiceConfigured = true,
+  emailDelivered = true,
+} = {}) => {
+  if (!state.user) return;
+  if (email) verifyState.pendingEmail = email;
+  const target =
+    verifyState.pendingEmail ||
+    state.user.pendingEmail ||
+    state.user.email ||
+    "your email";
+  if (els.verifyEmailTarget) els.verifyEmailTarget.textContent = target;
+  if (els.verifyDeliveryNote) {
+    const configured = emailServiceConfigured !== false;
+    const showNote = !configured || !emailDelivered;
+    els.verifyDeliveryNote.classList.toggle("hidden", !showNote);
+    els.verifyDeliveryNote.textContent = configured
+      ? "The code may take a minute to arrive. Check your spam folder too."
+      : "Email delivery is not configured on this server yet. An admin can finish setup.";
+  }
+  if (els.verifyError) els.verifyError.textContent = "";
+  if (els.verifyChangeError) els.verifyChangeError.textContent = "";
+  setVerifyStep("code");
+  showWithMotion(els.verifyModal);
+  refreshIcons();
+  els.verifyCodeInput?.focus();
+};
+
+const hideVerifyModal = () => hideWithMotion(els.verifyModal);
+
+const maybeRequireEmailVerification = () => {
+  if (state.user && !state.user.emailVerified) {
+    showVerifyModal({
+      email: state.user.pendingEmail || state.user.email,
+      emailServiceConfigured: state.config?.emailServiceConfigured,
+    });
+  }
+};
+
+const applyVerifiedUser = (data) => {
+  if (data?.user) state.user = data.user;
+  if (data?.accountStatus) updateAccountStatus(data.accountStatus);
+  if (data?.usage) updateUsage(data.usage);
+  updateAccount();
+};
+
+const verifyEmail = async () => {
+  const code = (els.verifyCodeInput?.value || "").trim();
+  els.verifyError.textContent = "";
+  if (!code) {
+    els.verifyError.textContent = "Enter the code from your email.";
+    return;
+  }
+  els.verifySubmitButton.disabled = true;
+  try {
+    const data = await apiFetch("/auth/verify-email", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    });
+    applyVerifiedUser(data);
+    els.verifyCodeInput.value = "";
+    hideVerifyModal();
+    showToast(
+      data.emailChanged
+        ? "Email updated and verified. You're all set!"
+        : "Email verified. You're all set!",
+    );
+    await fetchChats();
+  } catch (error) {
+    els.verifyError.textContent = error.message || "Could not verify that code.";
+  } finally {
+    els.verifySubmitButton.disabled = false;
+  }
+};
+
+const resendVerificationCode = async () => {
+  els.verifyError.textContent = "";
+  els.verifyResendButton.disabled = true;
+  try {
+    const data = await apiFetch("/auth/resend-verification", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    if (data.alreadyVerified) {
+      hideVerifyModal();
+      return;
+    }
+    if (data.email) {
+      verifyState.pendingEmail = data.email;
+      if (els.verifyEmailTarget) els.verifyEmailTarget.textContent = data.email;
+    }
+    if (els.verifyDeliveryNote) {
+      const configured = data.emailServiceConfigured !== false;
+      const showNote = !configured || !data.emailDelivered;
+      els.verifyDeliveryNote.classList.toggle("hidden", !showNote);
+      els.verifyDeliveryNote.textContent = configured
+        ? "The code may take a minute to arrive. Check your spam folder too."
+        : "Email delivery is not configured on this server yet.";
+    }
+    showToast(data.emailDelivered ? "Verification code sent." : "Email could not be sent. Please try again shortly.");
+  } catch (error) {
+    els.verifyError.textContent = error.message || "Could not resend the code.";
+  } finally {
+    // Mirror the server-side resend cooldown so the button cannot be spammed.
+    setTimeout(() => {
+      els.verifyResendButton.disabled = false;
+    }, 30000);
+  }
+};
+
+const submitChangeEmail = async () => {
+  els.verifyChangeError.textContent = "";
+  const email = (els.verifyNewEmail?.value || "").trim();
+  const password = els.verifyNewEmailPassword?.value || "";
+  if (!email) {
+    els.verifyChangeError.textContent = "Enter the new email address.";
+    return;
+  }
+  if (!password) {
+    els.verifyChangeError.textContent = "Enter your current password.";
+    return;
+  }
+  els.verifyChangeSubmit.disabled = true;
+  try {
+    const data = await apiFetch("/auth/change-email", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    });
+    verifyState.pendingEmail = data.pendingEmail || email;
+    if (state.user) state.user.pendingEmail = verifyState.pendingEmail;
+    updateAccount();
+    if (els.verifyEmailTarget) els.verifyEmailTarget.textContent = verifyState.pendingEmail;
+    els.verifyNewEmail.value = "";
+    els.verifyNewEmailPassword.value = "";
+    setVerifyStep("code");
+    showToast(data.emailDelivered ? "Code sent to your new email." : "Email could not be sent. Please try again shortly.");
+  } catch (error) {
+    els.verifyChangeError.textContent =
+      error.message || "Could not change your email.";
+  } finally {
+    els.verifyChangeSubmit.disabled = false;
+  }
+};
+
 const submitAuth = async () => {
   els.authError.textContent = "";
   if (state.config?.browserCheckRequired) {
@@ -4317,6 +4598,13 @@ const submitAuth = async () => {
     updateAccount();
     resetBrowserCheck("auth");
     els.authError.textContent = "";
+    if (data.requiresEmailVerification || (state.user && !state.user.emailVerified)) {
+      showVerifyModal({
+        email: data.verification?.email || state.user?.email,
+        emailServiceConfigured: data.verification?.emailServiceConfigured,
+        emailDelivered: data.verification?.emailDelivered,
+      });
+    }
     switchAccountTab("overview");
     state.activeChatId = null;
     state.activeSharedToken = "";
@@ -5043,6 +5331,34 @@ els.authForm.addEventListener("submit", (event) => {
   submitAuth();
 });
 
+els.verifySubmitButton?.addEventListener("click", () => verifyEmail());
+els.verifyResendButton?.addEventListener("click", () => resendVerificationCode());
+els.verifyChangeSubmit?.addEventListener("click", () => submitChangeEmail());
+els.verifyChangeEmailButton?.addEventListener("click", () => {
+  setVerifyStep("change");
+  els.verifyNewEmail?.focus();
+});
+els.verifyChangeBack?.addEventListener("click", () => setVerifyStep("code"));
+els.verifyCodeInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    verifyEmail();
+  }
+});
+els.verifyModal?.addEventListener("click", (event) => {
+  if (event.target === els.verifyModal) hideVerifyModal();
+});
+els.accountChangeEmailButton?.addEventListener("click", () => {
+  showVerifyModal({
+    email: state.user?.pendingEmail || state.user?.email,
+    emailServiceConfigured: state.config?.emailServiceConfigured,
+  });
+  if (!state.user?.pendingEmail) {
+    setVerifyStep("change");
+    els.verifyNewEmail?.focus();
+  }
+});
+
 // Keep the topbar border in sync with scroll position for a subtle depth cue.
 els.messageScroll?.addEventListener(
   "scroll",
@@ -5128,6 +5444,7 @@ const initializeApp = async () => {
     }
   }
   await fetchChats();
+  if (state.user && !state.user.emailVerified) window.location.hash = newChatUrl();
   await routeFromHash();
   showCookieBannerIfNeeded();
 };
