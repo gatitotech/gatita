@@ -85,10 +85,7 @@ const getQueryParam = (key) => {
   }
 };
 const getPostLoginRedirect = () => {
-  const redirect = getQueryParam("redirect").trim();
-  if (!redirect) return "";
-  if (/^https?:\/\//i.test(redirect)) return "";
-  return redirect.startsWith("/") ? redirect : `/${redirect}`;
+  return window.GatitaSessionLinks.safeAccountRedirect(getQueryParam("redirect"), window.location.origin);
 };
 const isLoginEntryPage = () => {
   return /\/login\.html$/i.test(window.location.pathname) || getQueryParam("login") === "1";

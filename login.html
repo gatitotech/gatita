@@ -50,16 +50,14 @@
       </section>
     </main>
 
+    <script src="session-links.js"></script>
     <script>
       (function () {
         var STORAGE_PREFIX = "gatita_ask_";
         var LEGACY_STORAGE_PREFIX = ["cl4", "nkr_ask_"].join("");
         var params = new URLSearchParams(window.location.search);
         var redirect = (params.get("redirect") || "/index.html").trim();
-        var safeRedirect =
-          redirect.startsWith("/") && !redirect.startsWith("//")
-            ? redirect
-            : "/index.html";
+        var safeRedirect = window.GatitaSessionLinks.safeAccountRedirect(redirect, window.location.origin) || "/index.html";
 
         var token =
           localStorage.getItem(STORAGE_PREFIX + "token") ||
@@ -73,7 +71,7 @@
         var status = document.getElementById("statusText");
         if (token) {
           status.textContent = "Session found. Redirecting…";
-          window.location.replace(safeRedirect);
+          window.location.replace(link.href);
         } else {
           status.textContent = "No session in this browser. Open the sign-in form.";
         }
