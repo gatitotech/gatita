@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connect Gatita Bote</title>
+<style>
+    :root { color-scheme: dark; font: 17px/1.6 system-ui, sans-serif; background: #141416; color: #f2f2f3; }
+    main { max-width: 460px; margin: 12vh auto; padding: 24px; }
+    h1 { line-height: 1.2; } a { color: #bdb4ff; }
+    label, input, button { display: block; box-sizing: border-box; width: 100%; }
+    input, button { font: inherit; padding: 12px; margin: 10px 0 20px; border: 1px solid #777; border-radius: 10px; }
+    input { background: #232327; color: inherit; } button { background: #d5ceff; color: #181320; cursor: pointer; }
+</style>
+<main>
+    <h1>Connect Gatita Bote</h1>
+    <p>Connect your Telegram private chat to your existing Gatita Ask account.</p>
+    <p id="account">Checking your Gatita Ask account…</p>
+    <form id="connectForm" hidden>
+        <label for="code">Connection code from Telegram</label>
+        <input id="code" name="code" required maxlength="12" minlength="12" pattern="[A-Za-z0-9_-]{12}" autocomplete="off" spellcheck="false">
+        <p>Only enter a code from your own Telegram chat with Gatita Bote. Connecting lets that Telegram account send messages using your Gatita plan and save chat history in Gatita Ask.</p>
+        <p>By connecting, you agree to Gatita’s <a href="https://gatita.tech/legal.html" target="_blank" rel="noopener">Terms and Privacy Policy</a>.</p>
+        <button type="submit">Connect my Telegram account</button>
+    </form>
+    <p id="status" role="status" aria-live="polite"></p>
+</main>
+<script>
+    const API = 'https://api.gatita.tech/ask-api';
+    const codeInput = document.getElementById('code');
+    const status = document.getElementById('status');
+    const token = localStorage.getItem('gatita_ask_token') || localStorage.getItem('cl4nkr_ask_token') || '';
+    const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+    codeInput.value = sessionStorage.getItem('gatita_telegram_code') || '';
+    const signIn = () => {
+        sessionStorage.setItem('gatita_telegram_code', codeInput.value.trim());
+        location.replace('/index.html?login=1&redirect=' + encodeURIComponent('/telegram-connect.html'));
+    };
+    (async () => {
+        try {
+            const response = await fetch(API + '/me', { credentials: 'include', headers });
+            if (!response.ok) throw new Error('Unable to check your account. Reload to try again.');
+            const result = await response.json();
+            if (!result.user) return signIn();
+            document.getElementById('account').textContent = 'Connecting as ' + result.user.displayName + ' (' + result.user.email + ').';
+            document.getElementById('connectForm').hidden = false;
+        } catch (error) { status.textContent = error.message; }
+    })();
+    document.getElementById('connectForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const button = event.target.querySelector('button');
+        button.disabled = true;
+        try {
+            const response = await fetch(API + '/telegram/connect', {
+                method: 'POST', credentials: 'include', headers,
+                body: JSON.stringify({ code: codeInput.value.trim() })
+            });
+            if (response.status === 401) return signIn();
+            const result = await response.json();
+            status.textContent = response.ok ? 'Connected! Return to Telegram and send /start or a message.' : result.error;
+            if (response.ok) {
+                event.target.hidden = true;
+                sessionStorage.removeItem('gatita_telegram_code');
+            }
+        } catch (_) { status.textContent = 'Connection failed. Try again.'; }
+        finally { button.disabled = false; }
+    });
+</script>
+</html>
