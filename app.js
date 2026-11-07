@@ -1,26 +1,9 @@
 const LEGACY_API_BASE_KEY = ["CL4", "NKR_ASK_API_BASE"].join("");
 const STORAGE_PREFIX = "gatita_ask_";
 const LEGACY_STORAGE_PREFIX = ["cl4", "nkr_ask_"].join("");
-const API_BASE_OVERRIDE = (() => {
-  try {
-    const fromQuery = new URLSearchParams(window.location.search).get("api");
-    if (fromQuery) {
-      localStorage.setItem(`${STORAGE_PREFIX}api_base`, fromQuery);
-      return fromQuery;
-    }
-    return (
-      localStorage.getItem(`${STORAGE_PREFIX}api_base`) ||
-      localStorage.getItem(`${LEGACY_STORAGE_PREFIX}api_base`) ||
-      ""
-    );
-  } catch (_) {
-    return "";
-  }
-})();
 const API_BASE =
   window.GATITA_ASK_API_BASE ||
   window[LEGACY_API_BASE_KEY] ||
-  API_BASE_OVERRIDE ||
   "https://api.gatita.tech";
 // Bump when the Terms/Privacy wording changes so returning users re-accept.
 const LEGAL_VERSION = "2026-10-05";
