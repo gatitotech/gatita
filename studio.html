@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gatita Studio - Install</title>
+<meta name="description" content="Install Gatita Studio, the full-screen terminal coding agent for Gatita. One line on macOS, Linux and Windows. Same account as Gatita, same limits.">
+<style>
+  /*
+    Fixed dark theme, deliberate: this is the install page for a terminal tool
+    and ships the same ink palette as the product (DESIGN.md). Monospace is
+    the brand typeface, not a "terminal costume" (R-06 exception, on purpose).
+  */
+  :root {
+    --ink:      #0f1115;
+    --surface:  #171a21;
+    --surface2: #1e222b;
+    --border:   #2b303b;
+    --text:     #e8e4dc;
+    --muted:    #9a958c;
+    --faint:    #6b675f;
+    --accent:   #f2b35c;
+    --success:  #8fc98f;
+    --info:     #86b9d8;
+    --focus:    #f2b35c;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--text);
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    line-height: 1.5;
+  }
+
+  /* ---------- top bar: the GATITA STUDIO header, narrowed ---------- */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    flex: none;
+    user-select: none;
+  }
+  .topbar .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+  .topbar .cat { color: var(--accent); font-size: 15px; line-height: 1; }
+  .topbar .name {
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .topbar .meta {
+    color: var(--muted);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  /* ---------- hero: the attached empty-state screen, dead center ---------- */
+  main { flex: 1; display: flex; flex-direction: column; }
+
+  .hero {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 48px 20px 40px;
+    gap: 18px;
+  }
+  .hero .cat {
+    color: var(--accent);
+    font-size: clamp(72px, 15vw, 120px);
+    line-height: 1;
+    user-select: none;
+  }
+  h1 {
+    margin: 0;
+    font-size: clamp(24px, 5vw, 40px);
+    font-weight: 700;
+    letter-spacing: 0.32em;
+    color: var(--text);
+    text-indent: 0.32em; /* optically recenters tracked-out caps */
+    line-height: 1.2;
+  }
+  .tagline {
+    margin: 0;
+    color: var(--muted);
+    font-size: clamp(13px, 1.8vw, 15px);
+  }
+  .caret {
+    color: var(--accent);
+    display: inline-block;
+    animation: blink 1.1s steps(1) infinite;
+  }
+  @keyframes blink { 0%, 55% { opacity: 1; } 56%, 100% { opacity: 0; } }
+
+  /* ---------- install: the copy section ---------- */
+  .install {
+    flex: none;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    padding: 28px 16px 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+  }
+
+  .label {
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 0.24em;
+    text-indent: 0.24em;
+    user-select: none;
+  }
+
+  .panel {
+    width: min(720px, 100%);
+    background: var(--ink);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .tabs {
+    display: flex;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+  .tab {
+    flex: 1 1 auto;
+    min-height: 44px;
+    padding: 10px 14px;
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .tab:hover { color: var(--text); }
+  .tab[aria-selected="true"] {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    background: var(--ink);
+  }
+
+  .cmd-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 18px 16px;
+  }
+  .cmd {
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    white-space: nowrap;
+    font-size: 13px;
+    color: var(--text);
+    padding: 4px 2px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .cmd .prompt { color: var(--accent); user-select: none; }
+
+  .copy {
+    flex: none;
+    min-width: 84px;
+    min-height: 44px;
+    padding: 0 14px;
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    font: inherit;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition: border-color 120ms ease, color 120ms ease;
+  }
+  .copy:hover { border-color: var(--accent); color: var(--accent); }
+  .copy.done { border-color: var(--success); color: var(--success); }
+
+  .note {
+    width: min(720px, 100%);
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .note a { color: var(--info); }
+
+  .checks {
+    width: min(720px, 100%);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 22px;
+    color: var(--muted);
+    font-size: 11.5px;
+  }
+  .checks li::before { content: "✓ "; color: var(--success); }
+
+  /* ---------- bottom status bar: the CLI status row, static ---------- */
+  .statusbar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 20px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 11px;
+    user-select: none;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+
+  @media (max-width: 560px) {
+    .topbar { padding: 10px 14px; }
+    .topbar .meta { display: none; }
+    .hero { padding: 36px 16px 32px; }
+    .cmd-row { flex-direction: column; align-items: stretch; gap: 12px; }
+    .cmd { font-size: 12px; }
+    .copy { width: 100%; }
+    .statusbar .right { display: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .caret { animation: none; }
+    .copy { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="cat" aria-hidden="true">ᓚᘏᗢ</span>
+    <span class="name">GATITA STUDIO</span>
+  </div>
+</header>
+
+<main>
+  <section class="hero" aria-labelledby="wordmark">
+    <div class="cat" aria-hidden="true">ᓚᘏᗢ</div>
+    <h1 id="wordmark">G A T I T A S T U D I O</h1>
+    <p class="tagline">Your terminal. Her territory. <span class="caret" aria-hidden="true">▌</span></p>
+  </section>
+
+  <section class="install" aria-label="Install Gatita Studio">
+
+    <div class="panel" aria-labelledby="install-label">
+      <div class="tabs" role="tablist" aria-label="Platform" id="platform-tabs"></div>
+      <div class="cmd-row" role="tabpanel" id="install-panel" tabindex="0" aria-labelledby="tab-powershell" aria-label="Install command">
+        <div class="cmd" id="cmd-display"></div>
+        <button class="copy" id="copy-button" type="button">Copy</button>
+      </div>
+    </div>
+
+    <p class="note" id="platform-note" aria-live="polite"></p>
+    <p class="note" style="font-size:11px;">
+      Nothing else is required. Sign in with the same Gatita account you already use.
+      Node 24 or newer comes from <a href="https://nodejs.org" rel="noopener">nodejs.org</a>.
+    </p>
+  </section>
+</main>
+
+<span id="copy-live" class="sr-live" aria-live="polite" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);"></span>
+
+<script>
+  var PLATFORMS = [
+    {
+      id: 'powershell',
+      tab: 'Windows',
+      command: 'irm https://api.gatita.tech/studio/install.ps1 | iex',
+      note: 'Run it in PowerShell 5.1 or PowerShell 7. The script downloads the release, verifies it, and installs both commands.'
+    },
+    {
+      id: 'unix',
+      tab: 'macOS + Linux',
+      command: 'curl -fsSL https://api.gatita.tech/studio/install.sh | sh',
+      note: 'Works anywhere with sh, curl or wget. Covers macOS, every Linux distribution, and containers.'
+    },
+    {
+      id: 'wsl',
+      tab: 'WSL + Git Bash',
+      command: 'curl -fsSL https://api.gatita.tech/studio/install.sh | sh',
+      note: 'Same script as macOS and Linux, run inside WSL, Git Bash, or a MSYS shell. Node 24 must be the Linux one, not the Windows build.'
+    },
+    {
+      id: 'manual',
+      tab: 'NPM',
+      command: 'npm install -g https://api.gatita.tech/studio/download/gatita-studio-latest.tgz',
+      note: 'For environments where piping to a shell is not allowed. npm downloads the same tarball the installer uses and links the global commands.'
+    }
+  ];
+
+  var tabsHost = document.getElementById('platform-tabs');
+  var cmdDisplay = document.getElementById('cmd-display');
+  var noteHost = document.getElementById('platform-note');
+  var copyButton = document.getElementById('copy-button');
+  var liveRegion = document.getElementById('copy-live');
+  var panel = document.getElementById('install-panel');
+
+  var activeIndex = 0;
+  var tabs = [];
+  var resetTimer = null;
+
+  function select(index, focusTab) {
+    activeIndex = index;
+    tabs.forEach(function (tab, i) {
+      var selected = i === index;
+      tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+      tab.tabIndex = selected ? 0 : -1;
+      if (selected) panel.setAttribute('aria-labelledby', tab.id);
+      if (selected && focusTab) tab.focus();
+    });
+    var platform = PLATFORMS[index];
+    cmdDisplay.textContent = '';
+    var prompt = document.createElement('span');
+    prompt.className = 'prompt';
+    prompt.textContent = '$ ';
+    cmdDisplay.appendChild(prompt);
+    cmdDisplay.appendChild(document.createTextNode(platform.command));
+    noteHost.textContent = platform.note;
+    setCopyState(false);
+  }
+
+  function setCopyState(done) {
+    clearTimeout(resetTimer);
+    copyButton.classList.toggle('done', done);
+    copyButton.textContent = done ? 'Copied!' : 'Copy';
+    copyButton.setAttribute('aria-label', done ? 'Command copied to clipboard' : 'Copy install command to clipboard');
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function (resolve, reject) {
+      var area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', '');
+      area.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+      document.body.appendChild(area);
+      area.select();
+      try {
+        var ok = document.execCommand('copy');
+        document.body.removeChild(area);
+        ok ? resolve() : reject(new Error('execCommand copy failed'));
+      } catch (error) {
+        document.body.removeChild(area);
+        reject(error);
+      }
+    });
+  }
+
+  copyButton.addEventListener('click', function () {
+    copyText(PLATFORMS[activeIndex].command).then(function () {
+      setCopyState(true);
+      liveRegion.textContent = 'Install command copied to clipboard.';
+      resetTimer = setTimeout(function () { setCopyState(false); }, 1600);
+    }, function () {
+      liveRegion.textContent = 'Copy failed. Select the command text and copy it manually.';
+      setCopyState(false);
+    });
+  });
+
+  PLATFORMS.forEach(function (platform, index) {
+    var tab = document.createElement('button');
+    tab.className = 'tab';
+    tab.type = 'button';
+    tab.role = 'tab';
+    tab.id = 'tab-' + platform.id;
+    tab.textContent = platform.tab;
+    tab.setAttribute('aria-selected', index === 0 ? 'true' : 'false');
+    tab.setAttribute('aria-controls', 'install-panel');
+    tab.tabIndex = index === 0 ? 0 : -1;
+    tab.addEventListener('click', function () { select(index, false); });
+    tab.addEventListener('keydown', function (event) {
+      var target = null;
+      if (event.key === 'ArrowRight' || event.key === 'ArrowDown') target = (index + 1) % PLATFORMS.length;
+      else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') target = (index - 1 + PLATFORMS.length) % PLATFORMS.length;
+      else if (event.key === 'Home') target = 0;
+      else if (event.key === 'End') target = PLATFORMS.length - 1;
+      if (target !== null) {
+        event.preventDefault();
+        select(target, true);
+      }
+    });
+    tabsHost.appendChild(tab);
+    tabs.push(tab);
+  });
+
+  select(0, false);
+</script>
+</body>
+</html>
